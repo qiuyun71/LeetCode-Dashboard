@@ -988,6 +988,30 @@ def auto_settle(l):
         return 0, 0, 0
     today = datetime.date.today().isoformat()
     settled = added = expanded = 0
+
+    # 第一步：把所有「已经过去、还没提交」的天按日期顺序结算掉。
+    # 原来只处理最后一个普通天（last_n），关机几天后再开会发现前几天
+    # 永远卡在「未交」状态——勾选的题不入库、日历上也不留痕，数据等于丢了。
+    for _ in range(500):
+        board = l.get("board", [])
+        target = None
+        for i, b in enumerate(board):
+            if b.get("extra"):
+                continue
+            if (b.get("date") or today) >= today:
+                continue# 今天或未来，留给用户
+            if b.get("done") or not b.get("tasks"):
+                continue                      # 已交 / 空板，无需结算
+            target = i
+            break                           # 按板面顺序 = 按日期顺序
+        if target is None:
+            break
+        b = board[target]
+        a, _c, _r, _e = do_submit(l, target, rec_date=b.get("date"))
+        settled += 1
+        added += a
+
+    # 第二步：还没追上今天就继续展开，直到今天（或计划排满）
     for _ in range(500):
         board = l.get("board", [])
         last_n = -1
@@ -998,20 +1022,12 @@ def auto_settle(l):
             break
         b = board[last_n]
         if (b.get("date") or today) >= today:
-            break                       # 已经是今天（或超前做了后面的天）
-        if b.get("done") or not b.get("tasks"):
-            if not do_expand(l):        # 前面都交完了，展开新的一天追今天
-                break
-            expanded += 1
-            continue
-        nxt_i = b.get("dayIndex", 0) + 1
-        has_nxt = any(x.get("dayIndex") == nxt_i and not x.get("extra")
-                      for x in board)
-        if not has_nxt and new_day(l, nxt_i) is None:
-            break                       # 计划已经排满，没有下一天：不硬动
-        a, _c, _r, _e = do_submit(l, last_n, rec_date=b.get("date"))
-        settled += 1
-        added += a
+            break                            # 已经是今天（或超前做了后面的天）
+        if not (b.get("done") or not b.get("tasks")):
+            break                            # 最后一天还有没交的题，交给用户
+        if not do_expand(l):
+            break                            # 计划排满，没有下一天：不硬动
+        expanded += 1
     return settled, added, expanded
 
 

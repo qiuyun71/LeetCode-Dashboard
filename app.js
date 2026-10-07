@@ -1317,5 +1317,25 @@ async function savePlan(){
   toast('计划已更新：'+total+' 题 / 每天 '+per+' 题 / 共 '+Math.ceil(total/per)+' 天');
 }
 
+/* ---------- 跨天自动刷新 ----------
+   页面开着过零点时，每分钟问一次服务器「今天几号」。
+   日期变了 -> 服务端已经自动结算昨天的账 -> 刷新页面就是新的一天。
+   （不这样做的话，页面会一直停在昨天的题板上，直到手动 F5） */
+function watchNewDay(){
+  setInterval(function(){
+    fetch('/api/state').then(function(r){return r.json();}).then(function(s){
+      if(s&&s.today&&TODAY&&s.today!==TODAY){
+        var t=document.getElementById('toast');
+        if(t){
+          t.textContent='新的一天已开始，正在刷新…';
+          t.classList.add('show');
+        }
+        setTimeout(function(){location.reload();},1200);
+      }
+    }).catch(function(){});
+  },60000);
+}
+
 initTip();
 load();
+watchNewDay();

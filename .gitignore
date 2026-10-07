@@ -11,6 +11,7 @@ plan.json
 .backup/
 截图/
 server.log
+board.log
 *.bak
 *-backup-*
 

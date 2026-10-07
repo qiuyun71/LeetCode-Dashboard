@@ -30,6 +30,10 @@
 
 ## 🚀 快速开始
 
+**最省事：下载 Releases 里的 `力扣刷题看板.exe`，双击即可，目标机器不需要装 Python。**
+
+想看源码或自己跑：
+
 **要求：Python 3.8+**（[官网下载](https://www.python.org/downloads/)，安装时勾选 *Add to PATH*）。
 **不需要** `pip install` 任何东西 —— 本项目只用 Python 标准库。
 
@@ -98,6 +102,7 @@ LEET_PLAN=_t_plan.json LEET_PORT=8799 python3 server.py
 ```
 leetcode-board/
 ├── server.py            # 本地服务（HTTP + API + 提醒后台线程）
+├── launcher.py          # 打包 EXE 用的入口（复用 server 逻辑）
 ├── ui.html              # 界面结构 + 全部样式
 ├── app.js               # 前端逻辑
 ├── plan.json            # 你的刷题数据（本地文件，不进仓库）
@@ -112,6 +117,24 @@ leetcode-board/
 ├── docs/screenshot.png  # README 配图
 └── README.md
 ```
+
+---
+
+## 📦 单文件 EXE
+
+```bash
+pip install pyinstaller
+python -m PyInstaller --onefile --noconsole --name "力扣刷题看板" \
+  --add-data "ui.html;." --add-data "app.js;." --add-data "assets;assets" \
+  --add-data "plan.example.json;." launcher.py
+```
+
+产物 `dist/力扣刷题看板.exe`（约 50MB，含Python 运行时），**目标机器不需要装 Python**。
+双击即起服务并打开浏览器；关掉进程即停服务。完整说明见 [`build_exe.md`](build_exe.md)。
+
+两个要注意的点：
+- `plan.json` / `board.log` 生成在 **exe 同目录**（不在临时目录），进度不会丢
+- 改了 `ui.html` / `app.js` / `assets/` 后**要重新打包**，exe 里是旧版本
 
 ---
 

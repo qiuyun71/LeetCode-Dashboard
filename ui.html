@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>力扣刷题看板 ✿</title>
+<title>题雨竹轩</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -158,6 +159,9 @@
   .cal .cell{aspect-ratio:1/0.92;border-radius:8px;background:#F3F0FA;
              display:flex;align-items:center;justify-content:center;
              font-size:10.5px;color:#C6BDD4;transition:.18s;cursor:default;font-weight:600;}
+  /* 做过题的格子：日期居中（.dn），做题量在右上角（.cnt） */
+  .cal .cell .cnt{position:absolute;top:2px;right:3px;font-size:8px;line-height:1;
+                  font-weight:800;opacity:.7;}
   .cal .cell:hover{transform:scale(1.13);z-index:3;}
   .cal .cell.l1{background:#E4E0FF;color:#6D5DE8;}
   .cal .cell.l2{background:#C9C1FF;color:#5B4BC4;}
@@ -261,7 +265,7 @@
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .nav-badge{flex:none;font-size:10.5px;font-weight:800;color:var(--iris-d);
              background:#F0EDFF;border-radius:99px;padding:2px 8px;line-height:1.5;
-             max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+             max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .navitem:hover .nav-badge{background:linear-gradient(100deg,var(--iris),var(--violet));color:#fff;}
 
   /* 自定义 tooltip：替代浏览器原生黑框 */
@@ -382,6 +386,8 @@
 
   /* 4. 滚动渐入 */
   .day{animation:dayIn .5s cubic-bezier(.22,1,.36,1) both;}
+  /* 同一天原地刷新（换题/勾选/加题）时跳过入场动画，避免整卡闪烁 */
+  .day.noanim{animation:none}
   @keyframes dayIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
   .day:nth-child(2){animation-delay:.06s}
   .day:nth-child(3){animation-delay:.12s}
@@ -751,15 +757,6 @@
   .f2>div{flex:1;}
   .fbtns{display:flex;gap:11px;margin-top:8px;}
 
-  /* 新建题单 tab 切换 */
-  .nl-tabs{display:flex;gap:9px;margin-bottom:17px;}
-  .nl-tab{flex:1;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;
-          font-size:13px;font-weight:700;color:var(--ink-2);background:var(--card);
-          cursor:pointer;transition:.2s;font-family:inherit;}
-  .nl-tab:hover{border-color:var(--iris-l);color:var(--iris-d);background:#F8F6FF;}
-  .nl-tab.active{border-color:transparent;color:#fff;
-                 background:linear-gradient(100deg,var(--iris-d),var(--violet-d));
-                 box-shadow:0 4px 14px var(--glow-p);}
   .fbtns button{flex:1;padding:12px;border-radius:13px;font-size:14px;font-weight:800;
                 cursor:pointer;font-family:inherit;transition:.2s;}
   .fbtns .ok{border:none;color:#fff;background:linear-gradient(100deg,var(--iris-d),var(--violet-d));
@@ -865,6 +862,7 @@
         <span class="sp"></span>
         <button id="pauseBtn" onclick="togglePause()">⏸ 暂停计划</button>
         <button onclick="openPlanSetup()">⚙ 修改计划</button>
+        <button onclick="replayWelcome()" data-tip="重新打开开场的计划设置向导和功能说明页">↺ 新手引导</button>
       </div>
 
       <div id="board"></div>
@@ -938,7 +936,7 @@
       <button onclick="addSlot()">+ 加一个时间</button>
       <button onclick="testRemind()">测试通知</button>
     </div>
-    <div class="remnote">到点会弹 Windows 通知（右下角）。需要看板服务在运行才会提醒。</div>
+    <div class="remnote">到点会弹 Windows 通知（右下角），需要看板服务在运行。收不到就到 设置 → 系统 → 通知 里确认「Windows PowerShell」没被关。</div>
   </div>
 </div>
 

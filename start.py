@@ -11,7 +11,7 @@ import time
 import webbrowser
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-PORT = 8765
+PORT = int(os.environ.get("LEET_PORT") or 8765)   # 与 server.py 保持一致
 URL = "http://127.0.0.1:%d" % PORT
 PY = sys.executable
 

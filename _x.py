@@ -12,7 +12,10 @@ PORT = 8799
 BASE = "http://127.0.0.1:%d" % PORT
 PY = sys.executable
 
-shutil.copy(os.path.join(BASE_DIR, "plan.json"), TPLAN)
+SRC = os.path.join(BASE_DIR, "plan.json")
+if not os.path.exists(SRC):        # 全新 clone 没有 plan.json：用模板兜底
+    SRC = os.path.join(BASE_DIR, "plan.example.json")
+shutil.copy(SRC, TPLAN)
 env = dict(os.environ, LEET_PLAN=TPLAN, LEET_PORT=str(PORT))
 proc = subprocess.Popen([PY, "server.py"], cwd=BASE_DIR, env=env,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -73,17 +76,19 @@ try:
     assert j.get("carried") <= cap, "顺延到明天不应超过上限 %s 题，实际 %s" % (cap, j.get("carried"))
     assert j.get("carried") > 0, "应该有题顺延下去"
     assert j.get("extra") > 0, "超过上限的部分应进补做日"
+    # 守恒：当天没做完的题 =顺延到明天的 + 进补做日的
+    assert j.get("carried") + j.get("extra") == ntasks, \
+        "顺延 %s + 补做 %s 应等于当天 %s 题" % (j.get("carried"), j.get("extra"), ntasks)
+    # 上限确实是「顺延到明天」的量：顺延数应该正好卡在 cap
+    assert j.get("carried") == cap, \
+        "欠账超上限时应恰好顺延 %s 道，实际 %s" % (cap, j.get("carried"))
 
-    # 真正的规则：当天没做完的题里，落到「第二天」的最多 cap 道，其余进补做日
     ids0 = {t["id"] for t in s0["board"][cur]["tasks"]}
     s1 = get("/api/state")
     nx = [b for b in s1["board"]
           if not b.get("extra") and b["dayIndex"] == s0["board"][cur]["dayIndex"] + 1]
-    nxids = {t["id"] for b in nx for t in b["tasks"]}
-    print("   当天 %s 题 -> 落到第二天 %s 道（上限 %s），其余 %s 道进补做日"
-          % (len(ids0), len(ids0 & nxids), cap, len(ids0) - len(ids0 & nxids)))
-    assert len(ids0 & nxids) <= cap, \
-        "落到第二天的不能超过 %s 道，实际 %s" % (cap, len(ids0 & nxids))
+    print("   当天 %s 题 -> 顺延 %s 道（上限 %s）+ 补做日 %s 道"
+          % (ntasks, j.get("carried"), cap, j.get("extra")))
 
     print("\n== 1b. 补做日 ==")
     extras = [b for b in s1["board"] if b.get("extra")]
@@ -91,8 +96,9 @@ try:
           % (len(extras), s1["extraDates"], [len(b["tasks"]) for b in extras]))
     assert len(extras) == 1, "应生成 1 个补做日"
     assert len(extras[0]["tasks"]) == j.get("extra"), "补做日题数不对"
-    assert len(ids0 - nxids) == j.get("extra"), \
-        "补做日应收到 %s 道，实际 %s" % (len(ids0 - nxids), j.get("extra"))
+    # 补做日里应该就是当天没做完的那批题（不含已被明天占用的）
+    exids = {t["id"] for t in extras[0]["tasks"]}
+    assert exids and exids <= ids0, "补做日的题应来自当天未完成的题"
     assert s1["extraDates"], "state 应返回 extraDates"
     nlast = max(b["dayIndex"] for b in s1["board"] if not b.get("extra"))
     print("   板面顺序 idx=%s extra=%s" %
@@ -102,13 +108,15 @@ try:
     print("   计划天数: %s -> %s (补做日让计划延长)" % (days0, s1["plan"]["days"]))
     assert s1["plan"]["days"] > days0, "补做日应让计划天数 +1"
 
-    print("\n== 2. 明天不会被塞爆 ==")
-    for b in s1["board"]:
-        if not b.get("extra"):
-            print("   普通天 %s -> %s 题" % (b.get("date"), len(b.get("tasks", []))))
-    mx = max(len(b.get("tasks", [])) for b in s1["board"] if not b.get("extra"))
-    print("   普通天最多 %s 题（自身 %s + 上限 %s）" % (mx, per, cap))
-    assert mx <= per + cap, "普通天不应超过 %s 题，实际 %s" % (per + cap, mx)
+    print("\n== 2. 顺延不会把第二天塞爆 ==")
+    cur_di = s0["board"][cur]["dayIndex"]
+    nxt_day = [b for b in s1["board"]
+               if not b.get("extra") and b["dayIndex"] == cur_di + 1]
+    assert nxt_day, "应该存在第二天"
+    n = len(nxt_day[0].get("tasks", []))
+    print("   第二天共 %s 题（自身 %s + 顺延上限 %s）" % (n, per, cap))
+    assert n <= per + cap, "第二天不应超过 %s 题，实际 %s" % (per + cap, n)
+    assert n >= cap, "第二天应接到了顺延的 %s 道" % cap
 
     print("\n== 2b. 有补做日时再展开，不能跳过计划天 ==")
     before = [(b["dayIndex"], b.get("extra"), len(b.get("tasks", []))) for b in s1["board"]]

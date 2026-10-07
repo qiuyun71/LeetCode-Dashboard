@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 题雨竹轩 · 极简标志：一竿两叶 -->
+  <defs>
+    <linearGradient id="bamboo" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#B39CFF"/>
+      <stop offset="1" stop-color="#6E8BF5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 竹竿 -->
+  <rect x="26.5" y="5" width="10" height="54" rx="5" fill="url(#bamboo)"/>
+
+  <!-- 竹节 -->
+  <g stroke="#fff" stroke-width="2.6" stroke-linecap="round" opacity=".55">
+    <path d="M28 23h7"/>
+    <path d="M28 41h7"/>
+  </g>
+
+  <!-- 竹叶：右上 + 左下 -->
+  <path d="M36 16c8.5-6.5 17-6.5 23.5-3-6.5 6.5-16 7.5-23.5 3z" fill="url(#bamboo)"/>
+  <path d="M27 52c-8-5.5-15.5-5-21.5-1.5 6 5.5 14.5 6.5 21.5 1.5z" fill="url(#bamboo)" opacity=".82"/>
+</svg>

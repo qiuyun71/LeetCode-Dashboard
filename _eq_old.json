@@ -1,0 +1,17 @@
+{
+  "activeList": "lc100",
+  "setupDone": false,
+  "reminders": {
+    "enabled": false,
+    "slots": [],
+    "lastFired": {}
+  },
+  "lists": {
+    "lc100": {
+      "name": "LeetCode 100",
+      "startDate": "2026-10-08",
+      "perDay": 4,
+      "categories": []
+    }
+  }
+}

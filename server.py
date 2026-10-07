@@ -20,15 +20,19 @@
 }
 days 不落盘，运行时由 categories 按 perDay 展平切分。
 """
+import html
 import json
 import os
 import re
 import datetime
+import shutil
+import sys
+import tempfile
 import threading
 import subprocess
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 # 测试时用 LEET_PLAN / LEET_PORT 指向副本，避免脚本动到真实 plan.json
@@ -40,6 +44,7 @@ _lock = threading.Lock()
 # 撤销栈：每次写操作前压入快照，最多保留 30 步
 _history = []
 HIST_MAX = 30
+_last_saved = ""        # 最近一次落盘内容的内存快照，can_undo 用它免读文件
 
 DEFAULT_REMINDERS = {
     "enabled": True,
@@ -50,23 +55,39 @@ DEFAULT_REMINDERS = {
     "lastFired": {},
 }
 DIFF_CN = {"easy": "简单", "medium": "中等", "hard": "困难"}
-CN_DIFF = {"简单": "easy", "中等": "medium", "困难": "hard",
-           "易": "easy", "中": "medium", "难": "hard",
-           "easy": "easy", "medium": "medium", "hard": "hard"}
 
 
 # ============ 基础读写 ============
 
 def load_plan():
-    with open(PLAN_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(PLAN_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        # 文件损坏（多半是手工编辑出错）：备份坏文件后重新初始化，看板不至于白屏
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        bad = "%s.broken-%s" % (PLAN_PATH, ts)
+        try:
+            os.replace(PLAN_PATH, bad)
+            print("plan.json 损坏（%s），已备份为 %s 并重新初始化" % (e, bad), flush=True)
+        except Exception:
+            pass
+        ensure_plan_file()
+        with open(PLAN_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        ensure_plan_file()
+        with open(PLAN_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 
 def save_plan(p):
+    global _last_saved
     tmp = PLAN_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(p, f, ensure_ascii=False, indent=2)
     os.replace(tmp, PLAN_PATH)
+    _last_saved = json.dumps(p, ensure_ascii=False)
 
 
 def push_history(p):
@@ -90,10 +111,7 @@ def pop_history():
 def can_undo():
     if not _history:
         return False
-    try:
-        return json.loads(_history[-1]) != load_plan()
-    except Exception:
-        return False
+    return _history[-1] != _last_saved
 
 
 # ============ 题单结构 ============
@@ -325,22 +343,34 @@ def new_day(l, day_index):
         d = datetime.date.fromisoformat(start) + datetime.timedelta(days=day_index)
     except Exception:
         d = datetime.date.today() + datetime.timedelta(days=day_index)
+    # build_days 是按顺序的「虚拟切分」，不知道哪些题已经被别的天占用。
+    # 「加题/ 换题」可能把后续某天的计划题提前拿到今天，导致那天的题板上
+    # 出现同一道题两次 —— 这里把已被其它天占用的题剔掉。
+    taken = set()
+    for bb in (l.get("board") or []):
+        if bb.get("dayIndex") != day_index:
+            taken |= {t.get("id") for t in (bb.get("tasks") or [])}
+    tasks = [make_task(x) for x in days[day_index] if x.get("id") not in taken]
     return {
         "dayIndex": day_index,
         "date": d.isoformat(),
-        "tasks": [make_task(x) for x in days[day_index]],
+        "tasks": tasks,
         "done": False,
         "deficit": 0,
     }
 
 
 def ensure_board(l):
+    """确保有起始日和第一天的板面。返回 True 表示真的补建了东西（需要写盘）"""
+    changed = False
     if not l.get("startDate"):
         l["startDate"] = datetime.date.today().isoformat()
+        changed = True
     if not l.get("board"):
         d0 = new_day(l, 0)
         l["board"] = [d0] if d0 else []
-    return l
+        changed = True
+    return changed
 
 
 def used_ids(l):
@@ -351,11 +381,11 @@ def used_ids(l):
     return s
 
 
-def candidate_pool(p, l, limit=300):
+def candidate_pool(p, l):
     """换题 / 加题的候选题目 —— 只从「本题单」里出，不外借。
 
     来源（都是本题单自己的题，加起来 <= 计划总题数）：
-      1. rest —— 本题单还没排上板的题（100 题里剩下的那 96 道）  ← 唯一来源
+      1. rest —— 本题单还没排上板的题  ← 唯一来源
 
     换下来的题会自己回到 rest（它既不在板上也不在 done），所以不需要备用池。
     题排完就是真没了，不会去全局题池 / 其它题单借题。
@@ -367,8 +397,6 @@ def candidate_pool(p, l, limit=300):
     src = {"rest": 0}
 
     def push(t, bucket):
-        if len(out) >= limit:
-            return
         tid = t.get("id")
         if tid is None or tid in used or tid in seen:
             return
@@ -503,8 +531,7 @@ def stats_view(l):
         streak += 1
         cur -= datetime.timedelta(days=1)
 
-    recent = [x["count"] for x in days7 if x["count"] > 0]
-    avg = (sum(recent) / len(recent)) if recent else 0
+    avg = sum(x["count"] for x in days7) / 7.0   # 名副其实的「近 7 天日均」
     total = total_problems(l)
     left = max(0, total - len(done_list(l)))
     eta = None
@@ -836,8 +863,11 @@ def _push_to_extra(l, tasks):
     return len(tasks)
 
 
-def do_submit(l, di):
+def do_submit(l, di, rec_date=None):
     """提交：勾选的记入 done；未勾选的滚到后一天（欠账补回）
+
+    完成记录的日期：手动提交 = 今天（提前做后面几天的题也算今天的做题量）；
+    自动结算传 rec_date = 那天的计划日期（昨晚忘了点提交，记录仍算昨天）。
 
     欠账上限：下一天最多只接 perDay×2 道，**超出的不再往后续天堆**，
     而是顺延到计划末尾新增的「补做日」（extra=True，日历上换颜色标注）。
@@ -850,11 +880,12 @@ def do_submit(l, di):
     b = board[di]
     done = l.setdefault("done", [])
     existing = {d["id"] for d in done_list(l)}
+    today = rec_date or datetime.date.today().isoformat()
     carry, added = [], 0
     for x in b.get("tasks", []):
         if x.get("checked"):
             if x.get("id") not in existing:
-                done.append({"id": x.get("id"), "date": b.get("date")})
+                done.append({"id": x.get("id"), "date": today})
                 existing.add(x.get("id"))
                 added += 1
         else:
@@ -929,13 +960,74 @@ def do_expand(l):
     return True
 
 
+def auto_settle(l):
+    """跨天自动结算：把落在昨天及以前的题板天处理掉，打开就是今天的题。
+
+    - 没提交的过去天：自动「确定完成」——勾选的记完成（记在那天的计划日期），
+      没勾的按欠账规则顺延；那天一题没做的话日历照常标红
+    - 已经交完但今天还没排上的：自动展开下一天，追到今天为止
+    - 暂停中的计划不动；提前做了后面的天（当前天在未来）也不动；
+      计划排满、没有下一天时停下来，留给用户手动处理
+
+    日期驱动，不依赖某个时刻服务必须活着：停机几天后再启动会一次性补齐。
+    返回 (自动提交的天数, 入库题数, 自动展开的天数)。
+    """
+    if l.get("paused"):
+        return 0, 0, 0
+    today = datetime.date.today().isoformat()
+    settled = added = expanded = 0
+    for _ in range(500):
+        board = l.get("board", [])
+        last_n = -1
+        for i, b in enumerate(board):
+            if not b.get("extra"):
+                last_n = i
+        if last_n < 0:
+            break
+        b = board[last_n]
+        if (b.get("date") or today) >= today:
+            break                       # 已经是今天（或超前做了后面的天）
+        if b.get("done") or not b.get("tasks"):
+            if not do_expand(l):        # 前面都交完了，展开新的一天追今天
+                break
+            expanded += 1
+            continue
+        nxt_i = b.get("dayIndex", 0) + 1
+        has_nxt = any(x.get("dayIndex") == nxt_i and not x.get("extra")
+                      for x in board)
+        if not has_nxt and new_day(l, nxt_i) is None:
+            break                       # 计划已经排满，没有下一天：不硬动
+        a, _c, _r, _e = do_submit(l, last_n, rec_date=b.get("date"))
+        settled += 1
+        added += a
+    return settled, added, expanded
+
+
 def do_reset_day(l, di):
+    """重置该天：恢复成当天的原始题目（勾选、换题、加题都还原）。
+
+    顺延进来的题（carry）不在当天的静态分块里，必须单独保留——
+    否则重置一次它们就从计划里消失了。补做日没有静态分块可恢复，
+    重置等于清空全部勾选。
+    """
     board = l.get("board", [])
     if not (0 <= di < len(board)):
         return False
-    fresh = new_day(l, board[di].get("dayIndex", 0))
+    keeps = [t for t in board[di].get("tasks", []) if t.get("carry")]
+    # 补做日不重建（没有"原始题目"可言，重建还会丢掉 extra 标记和顺延日期）
+    fresh = None if board[di].get("extra") else new_day(l, board[di].get("dayIndex", 0))
     if fresh is None:
-        return False
+        # 补做日 / 已无静态分块可恢复：只清空勾选，题目原样保留
+        for t in board[di].get("tasks", []):
+            t["checked"] = False
+        board[di]["done"] = False
+        board[di]["deficit"] = 0
+        return True
+    have = {t.get("id") for t in fresh["tasks"]}
+    for t in keeps:
+        if t.get("id") not in have:
+            fresh["tasks"].append(make_task(t, carry=True))
+            have.add(t.get("id"))
     fresh["deficit"] = 0
     board[di] = fresh
     return True
@@ -1047,17 +1139,12 @@ def slugify(name, existing):
 
 
 # ---- 力扣题单 URL 导入 ----
-# 官方 GraphQL 端点；favoriteQuestionList 支持公开题单（problem-list/<slug>）
+# 官方 GraphQL 端点（GET 版，favoriteQuestionList 支持公开题单与官方标签题单，
+# 如 problem-list/hash-table/）。leetcode.cn 对非浏览器请求会弹 WAF 挑战页，
+# 所以这里借用系统里现成的 Chromium 系浏览器（Windows 自带 Edge）无头访问：
+# 真浏览器会自己执行挑战拿到放行 cookie，GraphQL 的 JSON 就渲染在 <pre> 里，
+# dump-dom 抠出来即可 —— 全程只用标准库，不需要 Playwright。
 LC_GQL = "https://leetcode.cn/graphql/"
-LC_HDR = {
-    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "Accept-Language": "zh-CN,zh;q=0.9",
-    "Origin": "https://leetcode.cn",
-    "Referer": "https://leetcode.cn/",
-}
 LC_QUERY = """
 query favoriteQuestionList($favoriteSlug: String!, $limit: Int, $skip: Int) {
   favoriteQuestionList(favoriteSlug: $favoriteSlug, limit: $limit, skip: $skip) {
@@ -1109,7 +1196,8 @@ def tag_to_cn(name):
 def parse_lc_url(url):
     """从力扣题单链接里提取 slug
     支持：
-      https://leetcode.cn/problem-list/8LSpuXqD/
+      https://leetcode.cn/problem-list/8LSpuXqD/     （分享题单）
+      https://leetcode.cn/problem-list/hash-table/   （官方标签题单）
       https://leetcode.cn/problem-list/8LSpuXqD
       https://leetcode-cn.com/problem-list/xxxx/
     """
@@ -1126,87 +1214,162 @@ def parse_lc_url(url):
 _lc_cache = {}          # slug -> (timestamp, problems)
 LC_CACHE_TTL = 600      # 缓存 10 分钟
 
+_lc_browser = None      # 浏览器路径缓存（None=还没找，""=找不到）
+_lc_profile = None      # 无头浏览器的临时 profile（保留挑战 cookie，二次导入更快）
 
-def fetch_lc_list(slug, max_n=400, use_cache=True):
-    """调力扣 GraphQL 拉题单（用 Playwright 绕过反爬虫）。返回 (problems, err)"""
+
+def _browser_candidates():
+    """各平台常见的 Chromium 系浏览器安装位置"""
+    if os.name == "nt":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        return [
+            os.path.join(pf86, r"Microsoft\Edge\Application\msedge.exe"),
+            os.path.join(pf, r"Microsoft\Edge\Application\msedge.exe"),
+            os.path.join(pf, r"Google\Chrome\Application\chrome.exe"),
+            os.path.join(pf86, r"Google\Chrome\Application\chrome.exe"),
+            os.path.join(local, r"Google\Chrome\Application\chrome.exe"),
+            os.path.join(local, r"Chromium\Application\chrome.exe"),
+        ]
+    if sys.platform == "darwin":
+        return [
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        ]
+    return []       # Linux 走 PATH 查找
+
+
+def find_browser():
+    """找一个现成的 Chromium 系浏览器；Windows 10/11 自带 Edge，基本必中"""
+    global _lc_browser
+    if _lc_browser is not None:
+        return _lc_browser or None
+    for p in _browser_candidates():
+        if os.path.isfile(p):
+            _lc_browser = p
+            return p
+    for name in ("msedge", "chrome", "chromium", "chromium-browser",
+                 "google-chrome", "brave-browser"):
+        w = shutil.which(name)
+        if w:
+            _lc_browser = w
+            return w
+    _lc_browser = ""
+    return None
+
+
+def _lc_profile_dir(fresh=False):
+    global _lc_profile
+    if fresh and _lc_profile:
+        shutil.rmtree(_lc_profile, ignore_errors=True)
+        _lc_profile = None
+    if _lc_profile is None:
+        _lc_profile = tempfile.mkdtemp(prefix="lc-board-browser-")
+    return _lc_profile
+
+
+def _browser_get_json(gql_url, timeout=90):
+    """无头浏览器打开 GET 版 GraphQL，把渲染出的 <pre> JSON 抠出来。
+
+    首次访问会吃一次 WAF 挑战（浏览器自己解掉），同一 profile 下后续访问直接放行。
+    返回 dict；拿不到（没浏览器 / 超时 / 仍被拦）返回 None。
+    """
+    exe = find_browser()
+    if not exe:
+        return None
+    args = [exe,
+            "--headless=new", "--disable-gpu",
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox", "--disable-dev-shm-usage",
+            "--dump-dom", "--virtual-time-budget=30000",
+            "--user-data-dir=" + _lc_profile_dir(),
+            gql_url]
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        r = subprocess.run(args, capture_output=True, timeout=timeout,
+                           creationflags=flags, stdin=subprocess.DEVNULL)
+    except Exception:
+        return None
+    out = r.stdout.decode("utf-8", "replace")
+    i = out.find("<pre")
+    if i < 0:
+        return None
+    gt = out.find(">", i)
+    j = out.find("</pre>", gt)
+    if j < 0:
+        return None
+    try:
+        return json.loads(html.unescape(out[gt + 1:j]))
+    except Exception:
+        return None
+
+
+def fetch_lc_list(slug, max_n=3000, use_cache=True):
+    """调力扣 GraphQL 拉题单（标准库 + 系统浏览器，无第三方依赖）。返回 (problems, err)
+
+    端点对 limit 参数不敏感（多数题单一次就全量返回，hasMore=false），
+    翻页循环只为大题单兜底。取 translatedTitle（中文题名），无则退回英文 title。
+    """
     now = time.time()
     if use_cache and slug in _lc_cache:
         ts, cached = _lc_cache[slug]
         if now - ts < LC_CACHE_TTL:
             return cached, None
 
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return None, "Playwright 未安装，无法导入力扣题单"
+    if find_browser() is None:
+        return None, ("没找到可用的浏览器（Edge / Chrome），无法导入力扣题单；"
+                      "也可以手动复制题目，用「手动输入」创建题单")
 
     out, skip = [], 0
     page_size = 100
+    fresh_once = False
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=["--disable-blink-features=AutomationControlled",
-                      "--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            ctx = browser.new_context(
-                user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
-                locale="zh-CN",
-            )
-            page = ctx.new_page()
-            # 直接打开题单页：页面本身稳定，不会像首页那样被 SPA 路由重建
-            page.goto("https://leetcode.cn/problem-list/%s/" % slug,
-                      wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(1200)
+        while skip < max_n:
+            qs_url = LC_GQL + "?" + urlencode({
+                "query": LC_QUERY,
+                "variables": json.dumps({"favoriteSlug": slug,
+                                         "limit": page_size, "skip": skip}),
+                "operationName": "favoriteQuestionList",
+            })
+            result = _browser_get_json(qs_url)
+            if result is None:
+                # 常见于挑战没过或 profile 里旧 cookie 失效：换新 profile 再试一次
+                if not fresh_once:
+                    fresh_once = True
+                    _lc_profile_dir(fresh=True)
+                    continue
+                return None, "力扣请求失败：浏览器访问被拦截或超时，请稍后重试"
+            if result.get("errors"):
+                msg = result["errors"][0].get("message", "未知错误")
+                return None, "力扣返回错误：%s" % msg
 
-            while skip < max_n:
-                result = page.evaluate("""async (params) => {
-                    const resp = await fetch('https://leetcode.cn/graphql/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            query: params.query,
-                            variables: params.vars,
-                            operationName: 'favoriteQuestionList',
-                        }),
-                    });
-                    return await resp.json();
-                }""", {"query": LC_QUERY, "vars": {"favoriteSlug": slug, "limit": page_size, "skip": skip}})
+            node = (result.get("data") or {}).get("favoriteQuestionList")
+            if not node:
+                return None, "题单不存在或未公开"
 
-                if result.get("errors"):
-                    msg = result["errors"][0].get("message", "未知错误")
-                    browser.close()
-                    return None, "力扣返回错误：%s" % msg
-
-                node = (result.get("data") or {}).get("favoriteQuestionList")
-                if not node:
-                    browser.close()
+            qs = node.get("questions") or []
+            if not qs:
+                if not out:          # 第一页就空 -> 多半是 slug 不存在（力扣不报错，只给空列表）
                     return None, "题单不存在或未公开"
-
-                qs = node.get("questions") or []
-                if not qs:
-                    break
-                for q in qs:
-                    fid = q.get("questionFrontendId") or ""
-                    tags = [tag_to_cn(t.get("name", "")) for t in (q.get("topicTags") or [])]
-                    out.append({
-                        "id": fid,
-                        "name": q.get("title") or "",
-                        "difficulty": (q.get("difficulty") or "medium").lower(),
-                        "hint": " / ".join(tags[:3]),
-                        "slug": q.get("titleSlug") or "",
-                    })
-                skip += len(qs)
-                if not node.get("hasMore"):
-                    break
-
-            browser.close()
+                break
+            for q in qs:
+                fid = q.get("questionFrontendId") or ""
+                tags = [tag_to_cn(t.get("name", "")) for t in (q.get("topicTags") or [])]
+                out.append({
+                    "id": fid,
+                    "name": q.get("translatedTitle") or q.get("title") or "",
+                    "difficulty": (q.get("difficulty") or "medium").lower(),
+                    "hint": " / ".join(tags[:3]),
+                    "slug": q.get("titleSlug") or "",
+                })
+            skip += len(qs)
+            if not node.get("hasMore"):
+                break
     except Exception as e:
-        return None, "Playwright 请求失败：%s" % e
+        return None, "导入失败：%s" % e
 
     if not out:
         return None, "这个题单里没有题目"
@@ -1277,63 +1440,6 @@ def do_import_url(p, data):
     return {"key": key, "count": len(problems), "name": name, "groups": len(cats)}, None
 
 
-def parse_list_text(raw):
-    """解析用户输入的题单文本
-    规则：
-      - 一行只有文字（不含题号）→ 分类名
-      - 一行以数字开头 → 题目：「题号 题名 [难度]」
-      - 用 | 或 , 或 Tab 分隔也可以
-    """
-    cats, cur = [], None
-    for line in str(raw or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        m = re.match(r"^(\d+)[\s|,，\t]+(.+)$", line)
-        if m:
-            pid = int(m.group(1))
-            rest = m.group(2).strip()
-            diff = "medium"
-            # 末尾难度词
-            mm = re.search(r"[\s|,，\t]+(简单|中等|困难|easy|medium|hard)\s*$", rest, re.I)
-            if mm:
-                diff = CN_DIFF.get(mm.group(1).lower(), CN_DIFF.get(mm.group(1), "medium"))
-                rest = rest[:mm.start()].strip()
-            if cur is None:
-                cur = {"name": "默认分类", "problems": []}
-                cats.append(cur)
-            cur["problems"].append({"id": pid, "name": rest,
-                                    "difficulty": diff, "hint": ""})
-        else:
-            cur = {"name": line, "problems": []}
-            cats.append(cur)
-    return [c for c in cats if c["problems"]]
-
-
-def do_newlist(p, data):
-    name = str(data.get("name", "")).strip() or "新题单"
-    raw = data.get("raw", "")
-    cats = parse_list_text(raw)
-    if not cats:
-        return None, "没解析到题目，请按「题号 题名 难度」每行一道"
-    key = slugify(data.get("key") or name, set(p.get("lists", {}).keys()))
-    try:
-        per = max(1, min(20, int(data.get("perDay", 4))))
-    except Exception:
-        per = 4
-    p.setdefault("lists", {})[key] = {
-        "name": name,
-        "startDate": datetime.date.today().isoformat(),
-        "perDay": per,
-        "categories": cats,
-        "pool": [],
-        "done": [],
-        "board": [],
-    }
-    p["activeList"] = key
-    return key, None
-
-
 def do_dellist(p, key):
     lists = p.get("lists", {})
     if key not in lists:
@@ -1367,7 +1473,7 @@ def do_setperday(p, key, n):
     if l is None:
         return False
     try:
-        l["perDay"] = max(1, min(20, int(n)))
+        l["perDay"] = max(1, min(50, int(n)))
     except Exception:
         return False
     return True
@@ -1388,36 +1494,72 @@ def do_setstart(p, key, date):
 # ============ 提醒 ============
 
 def send_toast(title, body):
+    """弹 Windows 系统通知。返回 (ok, msg)：ok=已提交给系统；msg=失败原因（前端可见）"""
     ps = os.path.join(BASE, "toast.ps1")
     if not os.path.isfile(ps):
-        return False
+        return False, "toast.ps1 不存在"
+    if os.name != "nt":
+        return False, "系统通知仅支持 Windows"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        subprocess.run(
+        r = subprocess.run(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", ps, "-Title", title, "-Body", body],
-            creationflags=flags, timeout=30,
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            creationflags=flags, timeout=60,
+            stdin=subprocess.DEVNULL, capture_output=True,
         )
-        return True
-    except Exception:
-        return False
+    except Exception as e:
+        return False, "通知脚本执行失败：%s" % e
+    raw = r.stdout or b""
+    try:
+        out = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            out = raw.decode("gbk")
+        except Exception:
+            out = raw.decode("utf-8", "replace")
+    if "TOAST_OK" in out:
+        return True, None
+    if "TOAST_FAIL:" in out:
+        return False, "通知被系统拒绝：" + out.split("TOAST_FAIL:", 1)[1].strip()[:160]
+    return False, "通知脚本没有返回结果"
 
 
 def today_summary(p):
+    """当前要做的题。与前端 renderBoard 的「当前天」保持一致：
+    最后一个未完成的普通天；它做完后才轮到末尾（可能是补做日）。"""
     l = get_list(p)
     if l is None:
         return 0, 0, []
     board = l.get("board", [])
     if not board:
         return 0, 0, []
-    b = board[-1]
-    tasks = b.get("tasks", [])
+    last_n = -1
+    for i, d in enumerate(board):
+        if not d.get("extra"):
+            last_n = i
+    cur = len(board) - 1
+    if last_n >= 0 and not board[last_n].get("done"):
+        cur = last_n
+    tasks = board[cur].get("tasks", [])
     total = len(tasks)
     done = sum(1 for t in tasks if t.get("checked"))
     names = [t.get("name", "") for t in tasks if not t.get("checked")]
     return done, total, names
+
+
+def remind_body(p):
+    """提醒文案的正文（定时提醒和测试通知共用一份措辞）"""
+    done, total, names = today_summary(p)
+    left = total - done
+    if total == 0:
+        return "今天的题都清完了，休息一下 🎉"
+    if left == 0:
+        return "今天的 %d 题已全部勾选，记得点「确定完成」" % total
+    tip = "、".join(names[:3])
+    if len(names) > 3:
+        tip += " 等"
+    return "还剩 %d 题：%s" % (left, tip)
 
 
 def do_remind_config(p, data):
@@ -1449,31 +1591,39 @@ def reminder_worker():
             now = datetime.datetime.now()
             hm = now.strftime("%H:%M")
             today = now.date().isoformat()
+            fire = None
+            note = None
             with _lock:
                 p = ensure_root(load_plan())
+                # 跨天自动结算：把昨天及以前没提交的天自动「确定完成」并切到今天
+                l0 = get_list(p)
+                if l0 is not None:
+                    push_history(p)
+                    sd, sa, se = auto_settle(l0)
+                    if sd or se:
+                        save_plan(p)
+                        note = ("已自动结算 %d 天（入库 %d 题，没做的已顺延）" % (sd, sa)) if sd \
+                            else "已自动切换到今天的题板"
+                    else:
+                        _history.pop()   # 没动数据就不留撤销点
                 r = ensure_reminders(p)
-                if r.get("enabled"):
+                l_rem = get_list(p)
+                if r.get("enabled") and not (l_rem and l_rem.get("paused")):
                     for slot in r.get("slots", []):
                         st = str(slot.get("time", "")).strip()
                         if st != hm or r["lastFired"].get(st) == today:
                             continue
-                        done, total, names = today_summary(p)
-                        left = total - done
                         l = get_list(p)
                         lname = l.get("name", "刷题") if l else "刷题"
-                        if total == 0:
-                            body = "今天的题都清完了，休息一下 🎉"
-                        elif left == 0:
-                            body = "今天的 %d 题已全部勾选，记得点「确定完成」" % total
-                        else:
-                            tip = "、".join(names[:3])
-                            if len(names) > 3:
-                                tip += " 等"
-                            body = "还剩 %d 题：%s" % (left, tip)
+                        fire = ("%s · %s" % (lname, slot.get("label", "提醒")),
+                                remind_body(p))
                         r["lastFired"][st] = today
                         save_plan(p)
-                        send_toast("%s · %s" % (lname, slot.get("label", "提醒")), body)
                         break
+            if note:
+                send_toast("看板 · 自动结算", note)   # 锁外弹，不阻塞请求
+            if fire:
+                send_toast(fire[0], fire[1])   # 在锁外弹：PowerShell 慢也不阻塞请求
         except Exception:
             pass
         time.sleep(20)
@@ -1519,7 +1669,7 @@ def export_payload(p):
 
 def export_csv(payload):
     rows = payload.get("明细", [])
-    cols = ["题号", "题目", "难度", "完成日期", "是否换题补记"]
+    cols = ["题号", "题目", "难度", "完成日期", "标记来源"]
     lines = [",".join(cols)]
     for r in rows:
         vals = []
@@ -1544,7 +1694,7 @@ STATIC_TYPES = {
     ".webp": "image/webp",
     ".ico": "image/x-icon",
 }
-ALLOWED_STATIC = {"ui.html", "app.js"}
+ALLOWED_STATIC = {"ui.html", "app.js", "favicon.svg"}
 ALLOWED_DIRS = ("assets",)
 
 
@@ -1596,15 +1746,23 @@ class Handler(BaseHTTPRequestHandler):
         with open(path, "rb") as f:
             self._send(200, ctype, f.read())
 
+    def _host_ok(self):
+        """只接受本机 Host 头：挡掉恶意网页跨站 POST（CSRF）和 DNS 重绑定"""
+        host = (self.headers.get("Host") or "").lower()
+        return host in ("127.0.0.1:%d" % PORT, "localhost:%d" % PORT,
+                        "127.0.0.1", "localhost")
+
     def do_GET(self):
+        if not self._host_ok():
+            self._send(403, "text/plain; charset=utf-8", b"forbidden")
+            return
         path = self.path.split("?")[0]
         if path.startswith("/api/state"):
             with _lock:
                 p = ensure_root(load_plan())
                 l = get_list(p)
-                if l is not None:
-                    ensure_board(l)
-                save_plan(p)
+                if l is not None and ensure_board(l):
+                    save_plan(p)          # 只有真的补建了板面才写盘
                 self._json(state_view(p))
         elif path.startswith("/api/export"):
             with _lock:
@@ -1621,20 +1779,35 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ("/", "/index", "/index.html"):
             self._serve_file("ui.html")
         elif path == "/favicon.ico":
-            self._send(204, "image/x-icon", b"")
+            self._serve_file("favicon.svg")   # 浏览器兜底探测 .ico 时也给出图标
         else:
             self._serve_file(path.lstrip("/"))
 
     def do_POST(self):
+        if not self._host_ok():
+            self._send(403, "text/plain; charset=utf-8", b"forbidden")
+            return
         ln = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(ln) if ln else b"{}"
         try:
             data = json.loads(raw or b"{}")
         except Exception:
             data = {}
+        path = self.path.split("?")[0]
+
+        # 测试通知：只在锁里取文案，弹窗放到锁外（PowerShell 最长可能跑十几秒）
+        if path.startswith("/api/testremind"):
+            with _lock:
+                p = ensure_root(load_plan())
+                l0 = get_list(p)
+                lname = l0.get("name", "刷题") if l0 else "刷题"
+                title, body = "%s · 测试提醒" % lname, remind_body(p)
+            ok, msg = send_toast(title, body)
+            self._json({"ok": ok, "msg": msg})
+            return
+
         with _lock:
             p = ensure_root(load_plan())
-            path = self.path.split("?")[0]
             di = int(data.get("day", -1))
             ti = int(data.get("index", -1))
             l = get_list(p)
@@ -1657,18 +1830,6 @@ class Handler(BaseHTTPRequestHandler):
                 ok = do_switch(p, data.get("key", ""))
                 save_plan(p)
                 self._json({"ok": ok, "state": state_view(p)})
-                return
-            if path.startswith("/api/newlist"):
-                push_history(p)
-                key, err = do_newlist(p, data)
-                if err:
-                    _history.pop()
-                    self._json({"ok": False, "msg": err, "state": state_view(p)})
-                    return
-                l = get_list(p)
-                ensure_board(l)
-                save_plan(p)
-                self._json({"ok": True, "key": key, "state": state_view(p)})
                 return
             if path.startswith("/api/importurlsave"):
                 push_history(p)
@@ -1792,19 +1953,6 @@ class Handler(BaseHTTPRequestHandler):
                 save_plan(p)
                 self._json({"ok": True, "state": state_view(p)})
                 return
-            if path.startswith("/api/testremind"):
-                done, total, names = today_summary(p)
-                left = total - done
-                lname = l.get("name", "刷题") if l else "刷题"
-                if total == 0:
-                    body = "今天的题都清完了 🎉"
-                elif left == 0:
-                    body = "今天的 %d 题已全部勾选" % total
-                else:
-                    body = "还剩 %d 题：%s" % (left, "、".join(names[:3]))
-                ok = send_toast("%s · 测试提醒" % lname, body)
-                self._json({"ok": ok, "body": body})
-                return
 
             # 以下操作需要当前题单
             if l is None:
@@ -1889,13 +2037,33 @@ def ensure_plan_file():
 
 def main():
     ensure_plan_file()
+    settled = None
     with _lock:
         p = ensure_root(load_plan())
         l = get_list(p)
         if l is not None:
             ensure_board(l)
+            # 启动即补结算：停机几天后再打开，把欠的天一次性结清、切到今天
+            push_history(p)
+            sd, sa, se = auto_settle(l)
+            if sd or se:
+                save_plan(p)
+                settled = (sd, sa, se)
+                print("auto-settle: %d day(s) submitted (%d problem(s)), "
+                      "%d day(s) expanded" % (sd, sa, se), flush=True)
+            else:
+                _history.pop()
         save_plan(p)
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    if settled:
+        sd, sa, se = settled
+        msg = ("已自动结算 %d 天（入库 %d 题，没做的已顺延）" % (sd, sa)) if sd \
+            else "已自动切换到今天的题板"
+        send_toast("看板 · 自动结算", msg)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        print("端口 %d 已被占用：看板可能已经在运行了，不要重复启动" % PORT, flush=True)
+        return
     srv.daemon_threads = True
     t = threading.Thread(target=reminder_worker, daemon=True)
     t.start()

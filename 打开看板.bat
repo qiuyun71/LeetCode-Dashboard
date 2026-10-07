@@ -46,7 +46,7 @@ if not defined PYEXE (
 )
 
 echo   Using: %PYEXE% %PYARG%
-%PYEXE% %PYARG% start.py
+"%PYEXE%" %PYARG% start.py
 
 if errorlevel 1 (
     echo.

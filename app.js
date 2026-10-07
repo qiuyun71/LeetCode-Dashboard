@@ -387,9 +387,11 @@ function renderCalendar(s){
     var pausedDay=inPause(ds);
 
     if(n>0){
-      /* 做过题：无论区间内外、无论是否暂停都照常显示 —— 记录不会因暂停消失 */
+      /* 做过题：日期居中 + 做题量右上角标。原来直接把日期替换成题数，
+         「4」分不清是 4 号还是做了 4 题。颜色深浅继续编码做题量。 */
       var lvl=n>=8?4:n>=5?3:n>=3?2:1;
-      cls+=' l'+lvl; c.textContent=n;
+      cls+=' l'+lvl;
+      c.innerHTML='<span class="dn">'+d+'</span><span class="cnt">'+n+'</span>';
       var rows=(detail[ds]||[]).map(function(id){
         return '<div class="tr">#'+id+' '+esc(nameById[id]||'')+'</div>';
       }).join('');
@@ -509,75 +511,38 @@ function openCategories(){
   document.getElementById('mask').classList.add('show');
 }
 
-/* ---------- 新建题单 ---------- */
-var NL_TAB = 'manual'; // 'manual' | 'url'
+/* ---------- 新建题单（从力扣 URL 导入） ---------- */
 function openNewList(){
   dockReturn();
   MODAL='new';
-  NL_TAB = 'manual';
   document.getElementById('mTitle').innerHTML='新建题单';
   document.getElementById('modal').classList.remove('wide');
   renderNewListModal();
   document.getElementById('mask').classList.add('show');
-  setTimeout(function(){var e=document.getElementById('nlName');if(e)e.focus();},60);
+  setTimeout(function(){var e=document.getElementById('nlUrl');if(e)e.focus();},60);
 }
 function renderNewListModal(){
-  var isManual = NL_TAB === 'manual';
-  var isUrl = NL_TAB === 'url';
   document.getElementById('mBody').innerHTML =
-    '<div class="nl-tabs">'+
-      '<button class="nl-tab'+(isManual?' active':'')+'" onclick="NL_TAB=\'manual\';renderNewListModal()">手动输入</button>'+
-      '<button class="nl-tab'+(isUrl?' active':'')+'" onclick="NL_TAB=\'url\';renderNewListModal()">从力扣 URL 导入</button>'+
-    '</div>'+
-    (isManual ?
-      '<div class="frow"><label>题单名称</label>'+
-        '<input type="text" id="nlName" placeholder="例如：剑指 Offer"></div>'+
-      '<div class="frow"><div class="f2">'+
-        '<div><label>每天几题</label><input type="number" id="nlPer" value="4" min="1" max="20"></div>'+
-      '</div></div>'+
-      '<div class="frow"><label>题目内容</label>'+
-        '<textarea id="nlRaw" placeholder="哈希&#10;1 两数之和 简单&#10;49 字母异位词分组 中等&#10;&#10;双指针&#10;283 移动零 简单"></textarea>'+
-        '<div class="fhelp">'+
-          '每行一道题，格式：<code>题号 题目名 难度</code>（难度可省略，默认中等）<br>'+
-          '单独一行、不带题号的文字会自动识别为<b>分类名</b><br>'+
-          '也支持从力扣题单页直接复制粘贴（会自动清洗）'+
-        '</div></div>'+
-      '<div class="fbtns">'+
-        '<button class="cancel" onclick="closeModal()">取消</button>'+
-        '<button class="ok" onclick="createList()">创建题单</button>'+
-      '</div>'
-    :
-      '<div class="frow"><label>力扣题单 URL</label>'+
-        '<input type="text" id="nlUrl" placeholder="https://leetcode.cn/problem-list/xxxxxx/"></div>'+
-      '<div class="frow"><label>题单名称（可选）</label>'+
-        '<input type="text" id="nlUrlName" placeholder="留空则自动命名"></div>'+
-      '<div class="frow"><div class="f2">'+
-        '<div><label>每天几题</label><input type="number" id="nlUrlPer" value="4" min="1" max="20"></div>'+
-      '</div></div>'+
-      '<div class="frow"><label>分组方式</label>'+
-        '<select id="nlGroup">'+
-          '<option value="tag">按考点标签分组</option>'+
-          '<option value="none">不分组（全部放一起）</option>'+
-        '</select></div>'+
-      '<div id="nlPreview"></div>'+
-      '<div class="fbtns">'+
-        '<button class="cancel" onclick="closeModal()">取消</button>'+
-        '<button class="ok" onclick="importUrl()">导入题单</button>'+
-      '</div>'
-    );
-}
-async function createList(){
-  var name=(document.getElementById('nlName').value||'').trim();
-  var raw=document.getElementById('nlRaw').value||'';
-  var per=parseInt(document.getElementById('nlPer').value,10)||4;
-  if(!name){toast('请填题单名称');return;}
-  if(!raw.trim()){toast('请粘贴题目内容');return;}
-  var j=await post('/api/newlist',{name:name,raw:raw,perDay:per});
-  if(!j.ok){toast(j.msg||'创建失败');return;}
-  STATE=j.state;
-  closeModal();
-  renderStats(j.state);renderBoard(j.state);
-  toast('题单「'+name+'」已创建，共 '+j.state.target+' 题');
+    '<div class="frow"><label>力扣题单 URL</label>'+
+      '<input type="text" id="nlUrl" placeholder="https://leetcode.cn/problem-list/xxxxxx/"></div>'+
+    '<div class="frow"><label>题单名称（可选）</label>'+
+      '<input type="text" id="nlUrlName" placeholder="留空则自动命名"></div>'+
+    '<div class="frow"><div class="f2">'+
+      '<div><label>每天几题</label><input type="number" id="nlUrlPer" value="4" min="1" max="50"></div>'+
+    '</div></div>'+
+    '<div class="frow"><label>分组方式</label>'+
+      '<select id="nlGroup">'+
+        '<option value="tag">按考点标签分组</option>'+
+        '<option value="none">不分组（全部放一起）</option>'+
+      '</select></div>'+
+    '<div class="fhelp" style="margin-top:-6px">'+
+      '分享题单和官方标签题单（如 <code>problem-list/hash-table/</code>）都可以；'+
+      '需联网，由服务借系统自带的 Edge / Chrome 无头拉取</div>'+
+    '<div id="nlPreview"></div>'+
+    '<div class="fbtns">'+
+      '<button class="cancel" onclick="closeModal()">取消</button>'+
+      '<button class="ok" onclick="importUrl()">导入题单</button>'+
+    '</div>';
 }
 async function importUrl(){
   var url=(document.getElementById('nlUrl').value||'').trim();
@@ -626,7 +591,7 @@ function dayHTML(day, di, s, isCur){
     '<span class="daydate">'+fmtDate(day.date)+' '+wd(day.date)+'</span>'+badge+
     '<span class="spacer"></span>'+
     '<button class="addone" data-di="'+di+'" '+(fin?'disabled':'')+'>+ 加一题</button>'+
-    '<button class="addone reset" data-di="'+di+'" data-tip="恢复成当天的原始题目">重置</button></div>';
+    '<button class="addone reset" data-di="'+di+'" data-tip="恢复成当天的原始题目<br>顺延进来的题会保留">重置</button></div>';
 
   var inner='';
   day.tasks.forEach(function(t,ti){
@@ -703,6 +668,7 @@ function bindDay(box){
   });
 }
 
+var LAST_DAY='';   // 上次渲染的「当前天」标识：同一天重复渲染时不播入场动画
 function renderBoard(s){
   var box=document.getElementById('board');
   box.innerHTML='';
@@ -717,9 +683,13 @@ function renderBoard(s){
   for(var i=0;i<s.board.length;i++) if(!s.board[i].extra) lastN=i;
   if(lastN>=0&&!s.board[lastN].done) cur=lastN;
 
+  var dcur=s.board[cur];
+  var dkey=(s.activeList||'')+'#'+dcur.dayIndex+'#'+dcur.date+(dcur.extra?'#x':'');
   var el=document.createElement('div');
-  el.className='day'+(s.board[cur].done&&!s.board[cur].tasks.length?' finished':'');
-  el.innerHTML=dayHTML(s.board[cur],cur,s,true);
+  el.className='day'+(dcur.done&&!dcur.tasks.length?' finished':'')+
+    (dkey===LAST_DAY?' noanim':'');
+  LAST_DAY=dkey;
+  el.innerHTML=dayHTML(dcur,cur,s,true);
   box.appendChild(el);
   bindDay(box);
 
@@ -734,7 +704,6 @@ function renderBoard(s){
   }
 }
 
-/* ---------- 历史弹窗 ---------- */
 /* ---------- 二级菜单面板（把侧栏细节收进弹窗） ----------
    做法：这些区块的 DOM 常驻在 #dock（隐藏），打开弹窗时把节点搬进弹窗，
    关闭时再搬回 #dock。渲染逻辑完全复用，不用为弹窗重写一份。 */
@@ -823,35 +792,6 @@ function openPanel(kind){
   document.getElementById('mask').classList.add('show');
 }
 
-function openHistory(){
-  if(!STATE)return;
-  dockReturn();
-  MODAL='hist';
-  var s=STATE;
-  document.getElementById('mTitle').innerHTML='历史记录<span class="msub">'+esc(s.activeName||'')+'</span>';
-  document.getElementById('modal').classList.remove('wide');
-  var body=document.getElementById('mBody');
-  body.innerHTML='';
-  var cur=s.board.length-1, lastN=-1;
-  for(var i=0;i<s.board.length;i++) if(!s.board[i].extra) lastN=i;
-  if(lastN>=0&&!s.board[lastN].done) cur=lastN;
-  var items=[];
-  s.board.forEach(function(day,di){ if(di!==cur)items.push({day:day,di:di}); });
-  items.sort(function(a,b){return b.day.dayIndex-a.day.dayIndex;});
-  items.forEach(function(o){
-    var fin=o.day.done&&!o.day.tasks.length;
-    var el=document.createElement('div');
-    el.className='day'+(fin?' finished':'');
-    el.innerHTML=dayHTML(o.day,o.di,s);
-    body.appendChild(el);
-  });
-  if(!items.length){
-    body.innerHTML='<div style="text-align:center;color:#9CA3AF;padding:34px;line-height:1.8">'+
-      '还没有历史记录<br><span style="font-size:12.5px">完成当天并展开下一天后，这里会出现记录</span></div>';
-  }
-  bindDay(body);
-  document.getElementById('mask').classList.add('show');
-}
 function closeModal(){
   document.getElementById('mask').classList.remove('show');
   document.getElementById('modal').classList.remove('wide');
@@ -886,23 +826,46 @@ function checkBuild(s){
 }
 
 async function load(){
-  var s=await (await fetch('/api/state')).json();
+  var s;
+  try{
+    s=await (await fetch('/api/state')).json();
+  }catch(e){
+    toast('连不上看板服务，5 秒后自动重试…');
+    setTimeout(load,5000);
+    return;
+  }
   STATE=s; TODAY=s.today;
   checkBuild(s);
   renderStats(s);
   renderBoard(s);
-  if(MODAL==='hist'){
-    var body=document.getElementById('mBody');
-    var sc=body.scrollTop;
-    var m=MODAL; openHistory(); MODAL=m;
-    body.scrollTop=sc;
-  }
   // 首次访问：弹欢迎页引导设置计划
   if(!s.setupDone && !document.getElementById('wel').classList.contains('show')){
     openWelcome(0);
   }
 }
-async function toggle(di,ti){await post('/api/toggle',{day:di,index:ti});load();}
+async function toggle(di,ti){
+  /* 勾选只影响这一行的样式：原地翻转，不重建题板（重建会让整张卡闪一下） */
+  var row=document.querySelector('.task[data-di="'+di+'"][data-ti="'+ti+'"]');
+  var optimistic=row?!row.classList.contains('done'):false;
+  if(row)row.classList.toggle('done',optimistic);
+  var j;
+  try{
+    j=await post('/api/toggle',{day:di,index:ti});
+    if(!j.ok)throw new Error('toggle failed');
+  }catch(e){
+    if(row)row.classList.toggle('done',!optimistic);   // 失败回滚
+    toast('操作失败，请重试');
+    return;
+  }
+  STATE=j.state;
+  var t=(STATE.board[di]||{}).tasks?STATE.board[di].tasks[ti]:null;
+  if(row)row.classList.toggle('done',!!(t&&t.checked));
+  var ub=document.getElementById('undoBtn');
+  if(ub){
+    ub.disabled=!STATE.canUndo;
+    ub.setAttribute('data-tip',STATE.canUndo?'撤销上一步操作':'没有可撤销的操作');
+  }
+}
 async function swap(di,ti){
   var j=await post('/api/swap',{day:di,index:ti});
   if(!j.ok){
@@ -950,7 +913,7 @@ async function expand(){
   toast('已展开下一天');load();
 }
 async function resetDay(di){
-  if(!confirm('把这一天恢复成原始题目？勾选和加题都会被清掉。'))return;
+  if(!confirm('把这一天恢复成当天的原始题目？\n\n勾选、换题、加题都会还原；顺延（补做）进来的题会保留。\n\n确定继续吗？'))return;
   var j=await post('/api/resetday',{day:di});
   if(!j.ok){toast('重置失败');return;}
   toast('已重置');load();
@@ -974,9 +937,9 @@ function renderWeekly(s){
   if(w.delta==null||w.lastWeekTotal===0){
     dl.textContent='上周 '+w.lastWeekTotal+' 题'; dl.style.color='#9CA3AF';
   }else if(w.delta>0){
-    dl.textContent='↑ 比上周多 '+w.delta+'%'; dl.style.color='#DC2626';
+    dl.textContent='↑ 比上周多 '+w.delta+'%'; dl.style.color='#059669';
   }else if(w.delta<0){
-    dl.textContent='↓ 比上周少 '+Math.abs(w.delta)+'%'; dl.style.color='#059669';
+    dl.textContent='↓ 比上周少 '+Math.abs(w.delta)+'%'; dl.style.color='#DC2626';
   }else{
     dl.textContent='与上周持平'; dl.style.color='#6B7280';
   }
@@ -1009,7 +972,7 @@ function renderReminders(s){
   var navR=document.getElementById('navRem');
   if(navR){
     var ns=(r.slots||[]).length;
-    navR.textContent=r.enabled?('已开启 · '+ns+' 个时间'):'未开启';
+    navR.textContent=r.enabled?('每日 '+ns+' 次'):'未开启';
   }
   var box=document.getElementById('slotBox');
   box.innerHTML='';
@@ -1065,8 +1028,8 @@ function removeSlot(i){
 }
 async function testRemind(){
   var j=await post('/api/testremind');
-  if(j.ok){toast('测试通知已发送，看右下角');}
-  else{toast('通知发送失败，检查 toast.ps1 是否存在');}
+  if(j.ok){toast('测试通知已弹出，看右下角');}
+  else{toast('通知发送失败：'+(j.msg||'未知原因'));}
 }
 
 /* ---------- 导出 ---------- */
@@ -1267,6 +1230,11 @@ async function welSkip(){
   closeWelcome();
   toast('已跳过，随时可点「⚙ 修改计划」再设');
   load();
+}
+/* 回到开场的欢迎引导（计划设置 + 功能说明），入口在计划栏「↺ 新手引导」 */
+async function replayWelcome(){
+  await post('/api/welcomereset');
+  await load();          // load() 检测到 setupDone=false 会自动弹欢迎页
 }
 async function welFinish(){
   var c=calcDays();

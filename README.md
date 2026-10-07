@@ -75,6 +75,24 @@ LEET_PLAN=_t_plan.json LEET_PORT=8799 python3 server.py
 
 ---
 
+## 🖥 前台 / 后台运行
+
+| 方式 | 命令 | 表现 | 怎么停 |
+|------|------|------|--------|
+| **前台**（调试用） | `python3 server.py` | 终端占着，日志直接打屏 | `Ctrl+C` |
+| **后台 + 开浏览器**（日常推荐） | `python3 start.py` | 立刻返回控制台，不留窗口 | 任务管理器结束 `python` / `pythonw` |
+| **后台无窗口** | `pythonw server.py` | Windows 上完全没有黑框 | 任务管理器 |
+| **后台 + 日志**（mac/Linux） | `nohup python3 server.py > server.log 2>&1 &` | 无窗口，日志落盘 | `pkill -f server.py` |
+
+> `start.py` 用 `CREATE_NO_WINDOW | DETACHED_PROCESS` 创建子进程，
+> 服务彻底脱离控制台；它还会先探测 8765 端口，已经在跑就直接开浏览器不重复起。
+>
+> 想彻底当后台服务（开机自启、崩溃自动拉起），可以再套一层系统服务：
+> Windows 用任务计划程序 / NSSM，macOS 用 launchd，Linux 用 systemd —— 但对这个
+> 一次性小工具来说没必要，`start.py` 足够了。
+
+---
+
 ## 📁 项目结构
 
 ```

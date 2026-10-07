@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 个人数据（每个使用者自己的刷题进度，不要提交）
+plan.json
+
+# 本地快照与临时产物
+.backup/
+截图/
+server.log
+*.bak
+*-backup-*
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -23,6 +23,7 @@ days 不落盘，运行时由 categories 按 perDay 展平切分。
 import html
 import json
 import os
+import random
 import re
 import datetime
 import shutil
@@ -759,6 +760,10 @@ def do_swap(p, l, di, ti):
     候选来源见 candidate_pool()：只从本题单还没上板的题里取。
     被换下来的题既不在板上也不在 done，会自动回到候选里，之后还能换回来。
     本题单的题排完时返回 (False, "no_candidate")。
+
+    选取策略：**随机**挑，且最近 8 次换过的题临时拉黑。
+    否则取 cands[0] 会和「换下来的题又回到候选池」形成死循环——
+    表现为连点换题只在两三道题之间来回换（实测 25 次只换来 2 道不同的题）。
     """
     board = l.get("board", [])
     if not (0 <= di < len(board)):
@@ -769,7 +774,14 @@ def do_swap(p, l, di, ti):
     cands, _src = candidate_pool(p, l)
     if not cands:
         return False, "no_candidate"
-    tasks[ti] = make_task(cands[0])
+
+    recent = l.setdefault("swapLog", [])
+    fresh = [c for c in cands if c.get("id") not in recent[-8:]]
+    pick = random.choice(fresh or cands)      # 全被拉黑时才退回全池
+    recent.append(pick.get("id"))
+    del recent[:-24]                          # 只留最近 24 条，别无限增长
+
+    tasks[ti] = make_task(pick)
     return True, None
 
 

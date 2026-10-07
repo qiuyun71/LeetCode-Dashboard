@@ -1,0 +1,170 @@
+# -*- coding: utf-8 -*-
+"""欠账上限 + 补做日 + 按钮搬进题板
+
+跑在「副本 + 独立端口」上（LEET_PLAN / LEET_PORT），绝不碰真实 plan.json。
+"""
+import json, os, shutil, subprocess, sys, time, urllib.request
+from playwright.sync_api import sync_playwright
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TPLAN = os.path.join(BASE_DIR, "_t_plan.json")
+PORT = 8799
+BASE = "http://127.0.0.1:%d" % PORT
+PY = sys.executable
+
+shutil.copy(os.path.join(BASE_DIR, "plan.json"), TPLAN)
+env = dict(os.environ, LEET_PLAN=TPLAN, LEET_PORT=str(PORT))
+proc = subprocess.Popen([PY, "server.py"], cwd=BASE_DIR, env=env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def post(p, d=None):
+    req = urllib.request.Request(BASE + p, data=json.dumps(d or {}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read().decode())
+
+
+def get(p):
+    with urllib.request.urlopen(BASE + p, timeout=10) as r:
+        return json.loads(r.read().decode())
+
+
+ok = False
+try:
+    for _ in range(40):
+        try:
+            get("/api/state")
+            break
+        except Exception:
+            time.sleep(0.3)
+
+    s0 = get("/api/state")
+    per = s0["plan"]["perDay"]
+    cap = per * 2
+    cur = len(s0["board"]) - 1
+    print("题单=%s 每天=%s 题 -> 上限=%s" % (s0["activeList"], per, cap))
+
+    # 造场景：每天 1 题（上限 2），把当天堆到 5 题，全不勾选提交 -> 应分流成 2 顺延 + 3 补做日
+    post("/api/setplan", {"perDay": 1, "reset": False})
+    s0 = get("/api/state")
+    per = s0["plan"]["perDay"]
+    cap = per * 2
+    cur = len(s0["board"]) - 1
+
+    # 关键前置：恢复当天原题并清掉手动勾选（真实数据里用户可能勾了没提交）
+    post("/api/resetday", {"day": cur})
+    s0 = get("/api/state")
+    cur = len(s0["board"]) - 1
+    ntasks = len(s0["board"][cur]["tasks"])
+    assert not any(t.get("checked") for t in s0["board"][cur]["tasks"]), "重置后不该有勾选"
+    post("/api/add", {"day": cur, "n": 5 - ntasks})      # 堆到 5 题
+    s0 = get("/api/state")
+    cur = len(s0["board"]) - 1
+    ntasks = len(s0["board"][cur]["tasks"])
+    print("   重置+加题后：当天 %s 题，勾选数=%s（上限 %s）"
+          % (ntasks, sum(1 for t in s0["board"][cur]["tasks"] if t.get("checked")), cap))
+    assert ntasks > cap, "需要一天题数超过上限(%s)才能测出分流，实际 %s" % (cap, ntasks)
+    days0 = s0["plan"]["days"]
+
+    print("\n== 1. 整题提交（一道都不勾，全部变欠账）==")
+    j = post("/api/submit", {"day": cur})
+    print("   added=%s carried=%s extra=%s" % (j.get("added"), j.get("carried"), j.get("extra")))
+    assert j.get("carried") <= cap, "顺延到明天不应超过上限 %s 题，实际 %s" % (cap, j.get("carried"))
+    assert j.get("carried") > 0, "应该有题顺延下去"
+    assert j.get("extra") > 0, "超过上限的部分应进补做日"
+
+    # 真正的规则：当天没做完的题里，落到「第二天」的最多 cap 道，其余进补做日
+    ids0 = {t["id"] for t in s0["board"][cur]["tasks"]}
+    s1 = get("/api/state")
+    nx = [b for b in s1["board"]
+          if not b.get("extra") and b["dayIndex"] == s0["board"][cur]["dayIndex"] + 1]
+    nxids = {t["id"] for b in nx for t in b["tasks"]}
+    print("   当天 %s 题 -> 落到第二天 %s 道（上限 %s），其余 %s 道进补做日"
+          % (len(ids0), len(ids0 & nxids), cap, len(ids0) - len(ids0 & nxids)))
+    assert len(ids0 & nxids) <= cap, \
+        "落到第二天的不能超过 %s 道，实际 %s" % (cap, len(ids0 & nxids))
+
+    print("\n== 1b. 补做日 ==")
+    extras = [b for b in s1["board"] if b.get("extra")]
+    print("   补做日: %s 个, 日期=%s, 题数=%s"
+          % (len(extras), s1["extraDates"], [len(b["tasks"]) for b in extras]))
+    assert len(extras) == 1, "应生成 1 个补做日"
+    assert len(extras[0]["tasks"]) == j.get("extra"), "补做日题数不对"
+    assert len(ids0 - nxids) == j.get("extra"), \
+        "补做日应收到 %s 道，实际 %s" % (len(ids0 - nxids), j.get("extra"))
+    assert s1["extraDates"], "state 应返回 extraDates"
+    nlast = max(b["dayIndex"] for b in s1["board"] if not b.get("extra"))
+    print("   板面顺序 idx=%s extra=%s" %
+          ([b["dayIndex"] for b in s1["board"]], [b.get("extra") for b in s1["board"]]))
+    assert s1["board"][-1].get("extra"), "补做日应在板面最后"
+    assert extras[0]["dayIndex"] > nlast, "补做日序号应大于最后一个普通天"
+    print("   计划天数: %s -> %s (补做日让计划延长)" % (days0, s1["plan"]["days"]))
+    assert s1["plan"]["days"] > days0, "补做日应让计划天数 +1"
+
+    print("\n== 2. 明天不会被塞爆 ==")
+    for b in s1["board"]:
+        if not b.get("extra"):
+            print("   普通天 %s -> %s 题" % (b.get("date"), len(b.get("tasks", []))))
+    mx = max(len(b.get("tasks", [])) for b in s1["board"] if not b.get("extra"))
+    print("   普通天最多 %s 题（自身 %s + 上限 %s）" % (mx, per, cap))
+    assert mx <= per + cap, "普通天不应超过 %s 题，实际 %s" % (per + cap, mx)
+
+    print("\n== 2b. 有补做日时再展开，不能跳过计划天 ==")
+    before = [(b["dayIndex"], b.get("extra"), len(b.get("tasks", []))) for b in s1["board"]]
+    j2 = post("/api/expand", {})
+    s2 = get("/api/state")
+    print("   展开前 %s" % before)
+    print("   展开后 %s" % [(b["dayIndex"], b.get("extra"), len(b.get("tasks", []))) for b in s2["board"]])
+    assert j2.get("ok"), "展开应成功"
+    ni = max(b["dayIndex"] for b in s2["board"] if not b.get("extra"))
+    assert ni == nlast + 1, "新展开的普通天序号应为 %s，实际 %s" % (nlast + 1, ni)
+    assert s2["board"][-1].get("extra"), "展开后补做日仍应在最后"
+
+    print("\n== 3. 界面 ==")
+    errs = []
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 1440, "height": 900})
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
+        pg.goto(BASE)
+        pg.wait_for_timeout(1500)
+
+        inboard = pg.eval_on_selector_all(
+            ".day .dayacts .tbtn", "els => els.map(e=>e.textContent.trim())")
+        print("   题板内按钮:", inboard)
+        assert len(inboard) == 2, "题板里应有 2 个按钮（展开/撤销）"
+        assert any("展开" in x for x in inboard) and any("撤销" in x for x in inboard)
+        toolbar = pg.eval_on_selector_all(".toolbar", "els => els.length")
+        print("   顶部 toolbar 数量:", toolbar, "(应为 0，已移除)")
+        assert toolbar == 0, "顶部工具栏应已移除"
+
+        s3 = get("/api/state")
+        d = (s3.get("extraDates") or [None])[0]
+        print("   当前 extraDates:", s3.get("extraDates"))
+        assert d, "state 里应有补做日"
+        sel = '.cell[data-date="%s"]' % d
+        if pg.query_selector(sel):
+            cls = pg.eval_on_selector(sel, "e => e.className")
+            bg = pg.eval_on_selector(sel, "e => getComputedStyle(e).backgroundColor")
+            print("   补做日 %s class=%s 底色=%s" % (d, cls, bg))
+            assert "extra" in cls, "补做日应带 extra 标记"
+            assert bg != "rgb(255, 255, 255)", "补做日应有独立底色"
+        else:
+            print("   补做日 %s 不在本月日历上（需翻月），跳过样式检查" % d)
+        br.close()
+    print("   JS 错误:", errs if errs else "无")
+    assert not errs, "JS 错误: %s" % errs
+    print("\n全部断言通过")
+    ok = True
+finally:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+    if os.path.exists(TPLAN):
+        os.remove(TPLAN)
+    print("(副本服务已关闭，真实 plan.json 全程未被改动)")
+sys.exit(0 if ok else 1)

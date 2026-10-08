@@ -993,6 +993,57 @@ def do_add(p, l, di, n=1):
     return added, (None if added else "no_candidate")
 
 
+def do_custom_day(p, l, di, ids):
+    """自定义当天的题：把当天没勾的题整批换成自己挑的题
+
+    「系统出题」之外的手动通道：从本题单还没做过的题里挑今天做哪几道。
+    当天**已勾选**的题原样保留（半天提交过的进度不能丢）；换下来的题
+    回到本题单候选池（它们没 done，自然回到 rest）。
+    只接受本题单的、没做过（done /「之前做过」都算做过）的题；
+    每天总量仍受 perDay 约束（已勾选的也算在内）。
+    返回 (n, err)：n = 实际换进来的题数。
+    """
+    board = l.get("board", [])
+    if not (0 <= di < len(board)):
+        return 0, "bad_index"
+    per = max(1, int(l.get("perDay", 4) or 4))
+    b = board[di]
+
+    keep = [t for t in b.get("tasks", []) if t.get("checked")]
+    keep_ids = {t.get("id") for t in keep}
+    room = max(0, per - len(keep))
+
+    probs = {}
+    for _cn, t in effective_problems(l):
+        probs[t.get("id")] = t
+    done_ids = {d.get("id") for d in done_list(l)}
+
+    seen, picked = set(), []
+    for raw in (ids or []):
+        try:
+            tid = int(raw)
+        except Exception:
+            return 0, "bad_ids"
+        if tid in seen:
+            continue
+        seen.add(tid)
+        if tid in keep_ids:
+            continue                     # 已勾选的题不用重复选（原样保留）
+        x = probs.get(tid)
+        if x is None or tid in done_ids:
+            return 0, "bad_ids"          # 不是本题单的题 / 已经做过
+        picked.append(x)
+
+    if len(picked) > room:
+        return 0, "too_many"             # 当天最多 perDay 道（含已勾选的）
+    if not picked:
+        return 0, "nothing"              # 一道都没选
+
+    b["tasks"] = keep + [make_task(x) for x in picked]
+    b["done"] = False
+    return len(picked), None
+
+
 def _plan_end(l):
     """原计划的最后一天（不含补做日）：startDate + 计划天数 - 1"""
     start = l.get("startDate") or datetime.date.today().isoformat()
@@ -2185,6 +2236,14 @@ class Handler(BaseHTTPRequestHandler):
                     _history.pop()
                 save_plan(p)
                 self._json({"ok": n > 0, "added": n, "err": err,
+                            "state": state_view(p)})
+            elif path.startswith("/api/customday"):
+                # 自定义当天的题：换进来用户自己挑的题（已勾选的保留）
+                n, err = do_custom_day(p, l, di, data.get("ids") or [])
+                if err:
+                    _history.pop()
+                save_plan(p)
+                self._json({"ok": not err, "n": n, "err": err,
                             "state": state_view(p)})
             elif path.startswith("/api/submit"):
                 # 先记下这次勾了哪些题（do_submit 会清空当天 tasks，之后就取不到了）

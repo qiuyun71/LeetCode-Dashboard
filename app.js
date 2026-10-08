@@ -1041,7 +1041,8 @@ function dayHTML(day, di, s, isCur){
     '<span class="daydate">'+fmtDate(day.date)+' '+wd(day.date)+'</span>'+badge+
     '<span class="spacer"></span>'+
     '<button class="addone" data-di="'+di+'" '+addOff+addTip+'>+ 加一题</button>'+
-    '<button class="addone reset" data-di="'+di+'" data-tip="恢复成当天的原始题目<br>顺延进来的题会保留">重置</button></div>';
+    '<button class="addone reset" data-di="'+di+'" data-tip="恢复成当天的原始题目<br>顺延进来的题会保留">重置</button>'+
+    '<button class="addone custom" data-di="'+di+'" data-tip="自己挑今天做哪几道题<br>从本题单没做过的题里选，已勾选的会保留">✎ 自定义</button></div>';
 
   var inner='';
   day.tasks.forEach(function(t,ti){
@@ -1118,6 +1119,9 @@ function bindDay(box){
   });
   box.querySelectorAll('.addone.reset').forEach(function(el){
     el.onclick=function(e){e.stopPropagation();resetDay(+el.dataset.di);};
+  });
+  box.querySelectorAll('.addone.custom').forEach(function(el){
+    el.onclick=function(e){e.stopPropagation();openCustom(+el.dataset.di);};
   });
   box.querySelectorAll('.submit').forEach(function(el){
     el.onclick=function(){submit(+el.dataset.di);};
@@ -1268,6 +1272,7 @@ function closeModal(){
   document.getElementById('modal').classList.remove('wide');
   dockReturn();
   MODAL='';
+  CUSEL=[]; CUSKW='';               // 自定义面板的临时选择态一起清掉
 }
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){
@@ -1562,6 +1567,111 @@ async function undo(){
   var j=await post('/api/undo');
   if(!j.ok){toast('没有可撤销的操作');return;}
   toast('已撤销上一步');load();
+}
+
+/* ---------- 自定义今天的题：从本题单没做过的题里自己挑 ----------
+   入口在题板头部「✎ 自定义」。弹窗复用 mask/modal 系统 + 题目清单的
+   搜索/列表样式；候选 = 本题单还没做过的题（done / 之前做过都排除），
+   打开时当天没勾的题默认选中。提交走 /api/customday：已勾选的题保留。 */
+var CUSEL=[], CUSDAY=0, CUSKW='';
+function cusPer(){return (STATE&&STATE.plan&&STATE.plan.perDay)||4;}
+function openCustom(di){
+  if(!STATE)return;
+  var day=(STATE.board||[])[di]; if(!day)return;
+  CUSDAY=di; CUSKW='';
+  CUSEL=day.tasks.filter(function(t){return !t.checked;}).map(function(t){return t.id;});
+  var per=cusPer();
+  var ckN=day.tasks.filter(function(t){return t.checked;}).length;
+  document.getElementById('mTitle').innerHTML='自定义今天的题<span class="msub">'+
+    esc(STATE.activeName||'')+' · 每天 '+per+' 道</span>';
+  document.getElementById('mBody').innerHTML=
+    '<div class="cusbar">已选 <b id="cusN">'+CUSEL.length+'</b> / '+per+' 道'+
+      (ckN?' <span class="cusdim">· 今天已勾选的 '+ckN+' 题会保留':'')+
+    '</div>'+
+    '<div class="searchbox">'+
+      '<input id="cusSearch" type="text" placeholder="搜索题号或题目名…" oninput="onCusSearch(this.value)">'+
+      '<button class="clr" id="cusClr" onclick="clearCusSearch()">✕</button>'+
+    '</div>'+
+    '<div class="tbox"><div class="tlist cuslist" id="cusList"></div></div>'+
+    '<div class="cusfoot">'+
+      '<button class="cusa ghost" onclick="resetDay(CUSDAY);closeModal()">↺ 恢复系统出题</button>'+
+      '<button class="cusa go" id="cusApply" onclick="applyCustom()">设为今天的题</button>'+
+    '</div>';
+  document.getElementById('modal').classList.add('wide');
+  document.getElementById('mask').classList.add('show');
+  MODAL='custom';
+  renderCusList();
+}
+function cusCands(){
+  var day=(STATE&&STATE.board)?STATE.board[CUSDAY]:null;
+  var ck={};
+  if(day)day.tasks.forEach(function(t){if(t.checked)ck[t.id]=1;});
+  var arr=(STATE.tasks||[]).filter(function(t){return !t.done&&!ck[t.id];});
+  var kw=(CUSKW||'').trim().toLowerCase();
+  if(kw){
+    arr=arr.filter(function(t){
+      return String(t.id).indexOf(kw)>=0||
+             String(t.name).toLowerCase().indexOf(kw)>=0||
+             String(t.category||'').toLowerCase().indexOf(kw)>=0;});
+  }
+  return arr;
+}
+function renderCusList(){
+  var el=document.getElementById('cusList'); if(!el)return;
+  var arr=cusCands();
+  var sel={};CUSEL.forEach(function(id){sel[id]=1;});
+  var per=cusPer();
+  var nEl=document.getElementById('cusN');
+  if(nEl)nEl.textContent=CUSEL.length;
+  var ap=document.getElementById('cusApply');
+  if(ap)ap.disabled=!CUSEL.length;
+  el.innerHTML='';
+  if(!arr.length){
+    el.innerHTML='<div class="nores">'+(CUSKW?'没有匹配的题目':'没有可挑的题了')+'</div>';
+    return;
+  }
+  arr.forEach(function(t){
+    var on=!!sel[t.id];
+    var full=!on&&CUSEL.length>=per;
+    var d=document.createElement('div');
+    d.className='titem cusitem'+(on?' sel':'')+(full?' dim':'');
+    var color=DIFF[t.difficulty]||'#9CA3AF';
+    d.innerHTML='<span class="dot" style="background:'+color+'"></span>'+
+      '<span class="tid">#'+esc(t.id)+'</span>'+
+      '<span class="tnm">'+esc(t.name)+'</span>'+
+      (t.hint?'<span class="cuscat">'+esc(t.hint)+'</span>':'')+
+      (on?'<span class="cuck">✓</span>':'');
+    d.onclick=function(){
+      if(on){
+        CUSEL=CUSEL.filter(function(x){return x!==t.id;});
+      }else{
+        if(CUSEL.length>=per){toast('每天最多 '+per+' 道，先取消几道再选');return;}
+        CUSEL.push(t.id);
+      }
+      renderCusList();
+    };
+    el.appendChild(d);
+  });
+}
+function onCusSearch(v){
+  CUSKW=v||'';
+  document.getElementById('cusClr').classList.toggle('on',!!CUSKW);
+  renderCusList();
+}
+function clearCusSearch(){
+  document.getElementById('cusSearch').value='';
+  onCusSearch('');
+}
+async function applyCustom(){
+  var j=await post('/api/customday',{day:CUSDAY,ids:CUSEL});
+  if(!j.ok){
+    toast(j.err==='too_many'?('每天最多 '+cusPer()+' 道'):
+          (j.err==='nothing'?'一道都没选':'这些题不在可挑范围里'));
+    return;
+  }
+  closeModal();
+  toast('已自定义今天的题 · '+j.n+' 道');
+  load();
 }
 document.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}

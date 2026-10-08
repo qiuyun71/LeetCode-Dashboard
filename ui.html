@@ -182,6 +182,13 @@
   /* 补做日：欠账超出上限顺延出来的加时，琥珀色 */
   .cal .cell.extra{background:#FEF3C7;color:#B45309;font-weight:800;
                    border:1px solid #FCD34D;}
+  /* 提前日：当天做题量超过计划配额（提前把后面的题做掉了），薄荷青 */
+  .cal .cell.early{background:linear-gradient(135deg,#D9F7F0,#BDF0E3);color:#0F766E;
+                   font-weight:800;border:1px solid #6EE7C7;
+                   box-shadow:0 2px 9px rgba(45,212,191,.28);}
+  /* 提前日左下角小箭头标记 */
+  .cal .cell.early::before{content:"↑";position:absolute;left:3px;bottom:0;
+                   font-size:8px;font-weight:800;line-height:1;color:#0F766E;opacity:.85;}
   /* 区间端点小标记 */
   .cal .cell.beg::after,.cal .cell.end::after{content:"";position:absolute;
     left:50%;bottom:2px;transform:translateX(-50%);width:5px;height:5px;border-radius:99px;
@@ -211,6 +218,9 @@
   .legend{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-3);
           justify-content:flex-end;margin-bottom:12px;font-weight:600;flex-wrap:wrap;}
   .legend i{width:11px;height:11px;border-radius:4px;display:inline-block;}
+  /* 从成就详情跳过来时，日历闪一下吸引注意 */
+  .cal.flash{animation:calFlash 1.3s ease;}
+  @keyframes calFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 3px rgba(94,234,212,.6)}}
 
   /* 题目清单（小方框 + 可滚动） */
   .tbox{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden;
@@ -409,6 +419,34 @@
   .ringtxt b{font-size:15px;font-weight:800;letter-spacing:-.3px;
              background:linear-gradient(120deg,var(--iris-d),var(--violet-d));
              -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+
+  /* header 右侧：奖杯 + 进度环并排 */
+  .hright{display:flex;align-items:center;gap:14px;}
+  /* 成就殿堂入口： Trophy 用暖金色，和冷色主题区分开 */
+  .trophy-btn{position:relative;width:46px;height:46px;border-radius:99px;flex:none;
+              border:1.5px solid #FCD34D;cursor:pointer;font-family:inherit;
+              background:linear-gradient(135deg,#FFF9E9,#FFEFD2);
+              color:#D97706;display:flex;align-items:center;justify-content:center;
+              box-shadow:0 4px 14px rgba(217,119,6,.16);transition:.22s;}
+  .trophy-btn:hover{transform:translateY(-2px) scale(1.05);
+                    box-shadow:0 8px 22px rgba(217,119,6,.26);border-color:#F59E0B;}
+  .trophy-btn:active{transform:scale(.94);}
+  /* 点击时的小弹跳（JS 加 .pop 类，动画结束后移除） */
+  .trophy-btn.pop{animation:trophyPop .45s cubic-bezier(.22,1.4,.36,1);}
+  @keyframes trophyPop{0%{transform:scale(1)}35%{transform:scale(.86)}70%{transform:scale(1.14)}100%{transform:scale(1)}}
+  .trophy-btn .tb-badge{position:absolute;right:-5px;bottom:-4px;min-width:20px;
+              padding:1px 5px;border-radius:99px;background:linear-gradient(100deg,#F59E0B,#D97706);
+              color:#fff;font-size:9.5px;font-weight:800;line-height:1.5;
+              box-shadow:0 2px 7px rgba(217,119,6,.35);}
+  .trophy-btn.allin .tb-badge{background:linear-gradient(100deg,#10B981,#0F766E);
+              box-shadow:0 2px 7px rgba(16,185,129,.35);}
+  /* 点击奖杯洒出来的小纸屑（JS 动态生成 .spark） */
+  .tsparks{position:fixed;inset:0;pointer-events:none;z-index:80;overflow:hidden;}
+  .tsparks i{position:absolute;width:7px;height:7px;border-radius:2px;display:block;
+             animation:sparkFly .8s cubic-bezier(.15,.75,.35,1) forwards;}
+  @keyframes sparkFly{
+    0%{transform:translate(0,0) rotate(0deg);opacity:1}
+    100%{transform:translate(var(--dx),var(--dy)) rotate(320deg);opacity:0}}
 
   .day{background:var(--card);border-radius:20px;padding:15px 20px 13px;margin-bottom:12px;
        border:1px solid var(--line);position:relative;overflow:hidden;
@@ -912,6 +950,132 @@
                          background:linear-gradient(100deg,var(--iris-d),var(--violet-d));
                          box-shadow:0 5px 16px var(--glow-p);}
   .settle .sbtn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px var(--glow-p);}
+
+  /* ============ 成就殿堂 ============ */
+  .ach-mask{position:fixed;inset:0;background:rgba(30,25,55,.38);backdrop-filter:blur(5px);
+            display:none;align-items:center;justify-content:center;z-index:66;padding:20px;}
+  .ach-mask.show{display:flex;}
+  .ach{background:#fff;border-radius:22px;width:760px;max-width:94vw;max-height:88vh;
+       overflow:auto;box-shadow:0 28px 70px rgba(40,30,90,.30);padding:24px 26px 22px;
+       animation:settleIn .34s cubic-bezier(.22,1,.36,1) both;}
+  .ach::-webkit-scrollbar{width:9px}
+  .ach::-webkit-scrollbar-thumb{background:var(--iris-l);border-radius:9px;
+       border:2px solid transparent;background-clip:padding-box;}
+
+  /* 顶部：奖杯 + 标题 + 关闭 */
+  .ach-head{display:flex;align-items:center;gap:13px;margin-bottom:18px;}
+  .ach-head .hicon{flex:none;width:44px;height:44px;border-radius:14px;
+       background:linear-gradient(135deg,#FFF9E9,#FFE9BF);border:1.5px solid #FCD34D;
+       display:flex;align-items:center;justify-content:center;color:#D97706;
+       box-shadow:0 4px 14px rgba(217,119,6,.16);}
+  .ach-head .htx{flex:1;min-width:0;}
+  .ach-head .hname{font-size:19px;font-weight:800;color:var(--ink);letter-spacing:.2px;}
+  .ach-head .hsub{font-size:12px;color:var(--ink-3);font-weight:600;margin-top:3px;}
+  .ach-head .hsub b{color:#D97706;font-weight:800;}
+  .ach-close{flex:none;width:32px;height:32px;border-radius:10px;border:1.5px solid var(--line);
+       background:var(--card);color:var(--ink-3);cursor:pointer;font-size:14px;line-height:1;
+       font-family:inherit;transition:.2s;padding:0;}
+  .ach-close:hover{border-color:#F4A6B8;color:#BE123C;background:#FEF2F4;}
+
+  /* 顶部大数字统计（仿 TokenTrack）*/
+  .ach-top{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+  .ach-top .cell2{background:linear-gradient(100deg,#FCFBFF,#F8F6FF);border:1.5px solid var(--line);
+       border-radius:14px;padding:13px 14px;transition:.2s;}
+  .ach-top .cell2:hover{border-color:var(--iris-l);transform:translateY(-2px);
+       box-shadow:0 4px 14px var(--glow-p);}
+  .ach-top .cell2 .v{font-size:22px;font-weight:800;line-height:1.1;color:var(--iris-d);}
+  .ach-top .cell2 .v small{font-size:12px;color:var(--ink-3);font-weight:700;}
+  .ach-top .cell2 .k{font-size:11.5px;color:var(--ink-3);margin-top:5px;font-weight:600;}
+  .ach-top .cell2.gold .v{color:#D97706;}
+  .ach-top .cell2.mint .v{color:#0F766E;}
+
+  /* 分类筛选 */
+  .ach-chips{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .ach-chips .chip{border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);
+       border-radius:99px;padding:5px 13px;font-size:12px;font-weight:800;cursor:pointer;
+       font-family:inherit;transition:.2s;}
+  .ach-chips .chip:hover{border-color:var(--iris-l);color:var(--iris-d);background:#F8F6FF;}
+  .ach-chips .chip.on{border-color:var(--iris);color:#fff;
+       background:linear-gradient(100deg,var(--iris-d),var(--violet-d));
+       box-shadow:0 3px 12px var(--glow-p);}
+  .ach-chips .chip .n{opacity:.75;font-weight:700;margin-left:2px;}
+
+  /* 成就卡片网格 */
+  .ach-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  @media (max-width:640px){.ach-grid{grid-template-columns:1fr}.ach-top{grid-template-columns:1fr}}
+  .ach-card{position:relative;text-align:left;border:1.5px solid var(--bd,#E6E1F5);
+       background:linear-gradient(150deg,var(--tint,#FBFAFF),#FFFFFF 70%);
+       border-radius:16px;padding:13px 14px 12px;cursor:pointer;font-family:inherit;
+       transition:.22s;overflow:hidden;}
+  .ach-card:hover{transform:translateY(-3px);box-shadow:0 8px 22px rgba(80,60,160,.14);}
+  .ach-card.locked{background:#FBFAFD;}
+  .ach-card.locked:hover{box-shadow:0 6px 16px rgba(80,60,160,.08);}
+  /* 图标方块：解锁=分类渐变色；未解锁=灰 */
+  .ach-card .aicon{flex:none;width:40px;height:40px;border-radius:12px;display:flex;
+       align-items:center;justify-content:center;font-size:20px;line-height:1;
+       background:linear-gradient(135deg,var(--c1,#8B7CF6),var(--c2,#6D5DE8));
+       box-shadow:0 4px 12px rgba(109,93,232,.28);}
+  .ach-card.locked .aicon{background:#EDEAF5;box-shadow:none;filter:grayscale(1);opacity:.55;}
+  .ach-card .arow{display:flex;align-items:center;gap:11px;margin-bottom:9px;}
+  .ach-card .atx{flex:1;min-width:0;}
+  .ach-card .anm{font-size:14px;font-weight:800;color:var(--ink);}
+  .ach-card.locked .anm{color:var(--ink-2);}
+  .ach-card .ads{font-size:11px;color:var(--ink-3);font-weight:600;margin-top:2px;
+       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* 右上角解锁小勾 */
+  .ach-card .aok{position:absolute;top:10px;right:11px;width:19px;height:19px;border-radius:99px;
+       background:linear-gradient(135deg,#34D399,#0F766E);color:#fff;font-size:11px;
+       display:flex;align-items:center;justify-content:center;font-weight:800;
+       box-shadow:0 2px 8px rgba(16,185,129,.4);}
+  .ach-card.locked .aok{display:none;}
+  /* 底部进度条 */
+  .ach-card .apbar{height:7px;border-radius:99px;background:#F0EDF8;overflow:hidden;}
+  .ach-card .apbar i{display:block;height:100%;border-radius:99px;width:0;
+       background:linear-gradient(90deg,var(--c1,#8B7CF6),var(--c2,#6D5DE8));
+       transition:width .6s cubic-bezier(.34,1.3,.64,1);}
+  .ach-card.locked .apbar i{background:#D9D4E8;}
+  .ach-card .apnum{display:flex;justify-content:space-between;margin-top:6px;
+       font-size:10.5px;font-weight:700;color:var(--ink-3);}
+  .ach-card .apnum b{color:var(--ink-2);font-weight:800;}
+  .ach-card.locked .apnum b{color:var(--ink-3);}
+  .ach-card .alock{color:#B45309;}
+
+  /* 成就详情（同一弹窗内的第二视图）*/
+  .ach-detail{text-align:center;padding:6px 8px 2px;animation:achDetIn .28s cubic-bezier(.22,1,.36,1) both;}
+  @keyframes achDetIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+  .ach-back{position:absolute;left:26px;top:24px;border:1.5px solid var(--line);
+       background:var(--card);color:var(--ink-2);border-radius:10px;padding:6px 12px;
+       font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;transition:.2s;}
+  .ach-back:hover{border-color:var(--iris-l);color:var(--iris-d);background:#F8F6FF;}
+  .ad-icon{width:72px;height:72px;border-radius:20px;margin:14px auto 14px;display:flex;
+       align-items:center;justify-content:center;font-size:34px;line-height:1;
+       background:linear-gradient(135deg,var(--c1,#8B7CF6),var(--c2,#6D5DE8));
+       box-shadow:0 10px 26px rgba(109,93,232,.32);}
+  .ach-detail.locked .ad-icon{background:#EDEAF5;box-shadow:none;filter:grayscale(1);opacity:.6;}
+  .ad-name{font-size:22px;font-weight:800;color:var(--ink);}
+  .ad-cat{display:inline-block;margin-top:8px;padding:3px 12px;border-radius:99px;
+       font-size:11px;font-weight:800;color:var(--c2,#6D5DE8);
+       background:var(--tint,#F5F3FF);border:1.5px solid var(--bd,#DDD8FF);}
+  .ad-desc{font-size:13px;color:var(--ink-2);font-weight:600;line-height:1.8;margin:14px auto 0;
+       max-width:420px;}
+  .ad-prog{max-width:380px;margin:18px auto 0;}
+  .ad-prog .apbar{height:9px;}
+  .ad-pnum{display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;
+       color:var(--ink-3);margin-top:7px;}
+  .ad-pnum b{color:var(--ink-2);font-weight:800;}
+  .ad-state{margin-top:14px;font-size:13px;font-weight:800;}
+  .ad-state.ok{color:#0F766E;}
+  .ad-state.no{color:#B45309;}
+  .ad-btns{display:flex;gap:10px;justify-content:center;margin-top:20px;}
+  .ad-btn{padding:11px 26px;border-radius:13px;font-size:13.5px;font-weight:800;cursor:pointer;
+       font-family:inherit;transition:.2s;border:1.5px solid var(--line);background:var(--card);
+       color:var(--ink-2);}
+  .ad-btn:hover{border-color:var(--iris-l);color:var(--iris-d);background:#F8F6FF;}
+  .ad-btn.primary{border:none;color:#fff;
+       background:linear-gradient(100deg,var(--c1,#8B7CF6),var(--c2,#6D5DE8));
+       box-shadow:0 5px 16px rgba(109,93,232,.3);}
+  .ad-btn.primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(109,93,232,.38);}
+  .ad-empty{text-align:center;color:var(--ink-3);font-size:13px;font-weight:600;padding:34px 0;}
 </style>
 </head>
 <body>
@@ -944,6 +1108,8 @@
       <i style="background:#FFFFFF;border:1px solid #E9ECF1"></i>未到
       <i style="background:#FFE4E6;border:1px dashed #FDA4AF"></i>空缺
       <i style="background:#F7F5FC"></i>计划外
+      <i style="background:#FEF3C7;border:1px solid #FCD34D"></i>补做
+      <i style="background:linear-gradient(135deg,#D9F7F0,#BDF0E3);border:1px solid #6EE7C7"></i>提前
       <span style="margin:0 2px">·</span>
       <i style="background:#E4E0FF"></i><i style="background:#C9C1FF"></i>
       <i style="background:#8B7CF6"></i><i style="background:linear-gradient(135deg,#8B7CF6,#5EB8F5)"></i> 做题量
@@ -977,23 +1143,35 @@
     <div class="wrap">
       <div class="header">
         <div class="title" id="pageTitle">LeetCode 100</div>
-        <div class="ringwrap">
-          <svg class="ring" viewBox="0 0 72 72">
-            <defs>
-              <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#8B7CF6"/>
-                <stop offset="55%" stop-color="#5EB8F5"/>
-                <stop offset="100%" stop-color="#5EEAD4"/>
-              </linearGradient>
-            </defs>
-            <circle cx="36" cy="36" r="30" fill="none" stroke="#F3EEF9" stroke-width="7"/>
-            <circle id="ringArc" cx="36" cy="36" r="30" fill="none" stroke="url(#ringGrad)"
-                    stroke-width="7" stroke-linecap="round"
-                    stroke-dasharray="188.5" stroke-dashoffset="188.5"
-                    transform="rotate(-90 36 36)"
-                    style="transition:stroke-dashoffset .7s cubic-bezier(.34,1.3,.64,1)"/>
-          </svg>
-          <div class="ringtxt"><b id="pct">0%</b></div>
+        <div class="hright">
+          <button class="trophy-btn" id="trophyBtn" onclick="openTrophy()"
+                  data-tip="成就殿堂<br>点击查看已解锁的成就">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/>
+              <path d="M7 5.5H4.5V8a3 3 0 0 0 3 3M17 5.5h2.5V8a3 3 0 0 1-3 3"/>
+              <path d="M12 14v3.5M8.5 21h7l-.8-3.5h-5.4L8.5 21z"/>
+            </svg>
+            <span class="tb-badge" id="trophyBadge">0/0</span>
+          </button>
+          <div class="ringwrap">
+            <svg class="ring" viewBox="0 0 72 72">
+              <defs>
+                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#8B7CF6"/>
+                  <stop offset="55%" stop-color="#5EB8F5"/>
+                  <stop offset="100%" stop-color="#5EEAD4"/>
+                </linearGradient>
+              </defs>
+              <circle cx="36" cy="36" r="30" fill="none" stroke="#F3EEF9" stroke-width="7"/>
+              <circle id="ringArc" cx="36" cy="36" r="30" fill="none" stroke="url(#ringGrad)"
+                      stroke-width="7" stroke-linecap="round"
+                      stroke-dasharray="188.5" stroke-dashoffset="188.5"
+                      transform="rotate(-90 36 36)"
+                      style="transition:stroke-dashoffset .7s cubic-bezier(.34,1.3,.64,1)"/>
+            </svg>
+            <div class="ringtxt"><b id="pct">0%</b></div>
+          </div>
         </div>
       </div>
       <div class="progress"><div class="bar" id="bar"></div></div>
@@ -1041,6 +1219,11 @@
 <!-- 结算页：提交后展示「今天做了什么」 -->
 <div class="settle-mask" id="settleMask" onclick="if(event.target===this)closeSettle()">
   <div class="settle" id="settleBox"></div>
+</div>
+
+<!-- 成就殿堂：奖杯入口弹出的成就列表 / 详情 -->
+<div class="ach-mask" id="achMask" onclick="if(event.target===this)closeTrophy()">
+  <div class="ach" id="achBox"></div>
 </div>
 
 <!-- 标记选择：经典 / 错题 -->

@@ -244,6 +244,229 @@ function renderPanelBody(){
   if(body)body.innerHTML=renderMarks(STATE);
 }
 
+/* ---------- 成就殿堂 ---------- */
+/* 分类配色：每个分类一套鲜亮渐变（图标方块 + 卡片底色 + 进度条）*/
+var ACH_CATS={
+  milestone:{name:'里程碑',c1:'#8B7CF6',c2:'#6D5DE8',tint:'#F5F3FF',bd:'#DDD8FF'},
+  streak:{name:'坚持',c1:'#5EB8F5',c2:'#3B96E0',tint:'#EFF8FF',bd:'#CFE8FF'},
+  burst:{name:'爆发',c1:'#FBBF24',c2:'#F59E0B',tint:'#FFFBEB',bd:'#FDE68A'},
+  collect:{name:'收藏',c1:'#FB7185',c2:'#F43F5E',tint:'#FFF1F3',bd:'#FECDD3'},
+  plan:{name:'计划',c1:'#5EEAD4',c2:'#2DD4BF',tint:'#F0FDFA',bd:'#A7F3D0'}
+};
+/* 成就定义（原型版：定义写死在前端，进度从实时 state 算，做到哪个解锁哪个）*/
+var ACH=[
+  /* 里程碑：累计完成题数 */
+  {id:'a1',cat:'milestone',icon:'🌱',name:'初露锋芒',desc:'完成第 1 道题，刷题之旅起步',target:1,unit:'题',
+   val:function(s){return s.doneCount||0;}},
+  {id:'a2',cat:'milestone',icon:'🌿',name:'小有所成',desc:'累计完成 10 道题',target:10,unit:'题',
+   val:function(s){return s.doneCount||0;}},
+  {id:'a3',cat:'milestone',icon:'🌳',name:'渐入佳境',desc:'累计完成 25 道题',target:25,unit:'题',
+   val:function(s){return s.doneCount||0;}},
+  {id:'a4',cat:'milestone',icon:'⛰️',name:'半壁江山',desc:'累计完成 50 道题',target:50,unit:'题',
+   val:function(s){return s.doneCount||0;}},
+  {id:'a5',cat:'milestone',icon:'🏆',name:'计划通关',desc:'完成本题单计划的全部题目',target:0,unit:'题',
+   dyn:function(s){return s.target||100;},
+   val:function(s){return s.doneCount||0;}},
+  /* 坚持：连续刷题天数 */
+  {id:'s3',cat:'streak',icon:'📅',name:'三日连胜',desc:'连续 3 天有做题记录',target:3,unit:'天',
+   val:function(s){return (s.stats&&s.stats.streak)||0;}},
+  {id:'s7',cat:'streak',icon:'🔥',name:'一周不懈',desc:'连续 7 天有做题记录',target:7,unit:'天',
+   val:function(s){return (s.stats&&s.stats.streak)||0;}},
+  {id:'s15',cat:'streak',icon:'🌙',name:'半月之约',desc:'连续 15 天有做题记录',target:15,unit:'天',
+   val:function(s){return (s.stats&&s.stats.streak)||0;}},
+  {id:'s30',cat:'streak',icon:'👑',name:'三十功名',desc:'连续 30 天有做题记录',target:30,unit:'天',
+   val:function(s){return (s.stats&&s.stats.streak)||0;}},
+  /* 爆发：单日做题量 */
+  {id:'b5',cat:'burst',icon:'⚡',name:'小爆发',desc:'单一天完成 5 道题',target:5,unit:'题',
+   val:function(s){return maxDaily(s);}},
+  {id:'b8',cat:'burst',icon:'💥',name:'大爆发',desc:'单一天完成 8 道题',target:8,unit:'题',
+   val:function(s){return maxDaily(s);}},
+  {id:'b12',cat:'burst',icon:'🐲',name:'肝帝附体',desc:'单一天完成 12 道题',target:12,unit:'题',
+   val:function(s){return maxDaily(s);}},
+  /* 收藏：错题本标记 */
+  {id:'c1',cat:'collect',icon:'⭐',name:'首记经典',desc:'把第 1 道题标记为「经典」',target:1,unit:'道',
+   val:function(s){return (s.markStats&&s.markStats.classic)||0;}},
+  {id:'w10',cat:'collect',icon:'📕',name:'错题收藏家',desc:'累计标记 10 道错题',target:10,unit:'道',
+   val:function(s){return (s.markStats&&s.markStats.wrong)||0;}},
+  {id:'c10',cat:'collect',icon:'💎',name:'好题猎人',desc:'累计标记 10 道经典题',target:10,unit:'道',
+   val:function(s){return (s.markStats&&s.markStats.classic)||0;}},
+  /* 计划：提前 / 补做 / 新一轮 */
+  {id:'e3',cat:'plan',icon:'🚀',name:'提前日达人',desc:'累计 3 天做题量超出当日计划（提前刷后面的题）',target:3,unit:'天',
+   val:function(s){return earlyDays(s);}},
+  {id:'x1',cat:'plan',icon:'🧹',name:'清完补做',desc:'完整清空 1 个补做日',target:1,unit:'个',
+   val:function(s){
+     return (s.board||[]).filter(function(b){return b.extra&&b.done;}).length;}},
+  {id:'r2',cat:'plan',icon:'🔁',name:'第二轮',desc:'完成一轮计划后，开启新一轮刷题',target:2,unit:'轮',
+   val:function(s){return s.round||1;}}
+];
+var ACH_VIEW={cat:'all',open:null};   // open=成就 id 时显示详情
+
+/* 单日最大做题量（只算真正做的新题，和日历一致）*/
+function maxDaily(s){
+  var d=s.daily||{}, mx=0;
+  for(var k in d){if(d[k]>mx)mx=d[k];}
+  return mx;
+}
+/* 提前日天数：当天做题量 > 当日计划配额 */
+function earlyDays(s){
+  var d=s.daily||{}, per=s.perDay||4, n=0;
+  for(var k in d){if(d[k]>per)n++;}
+  return n;
+}
+/* 计算所有成就的当前进度 */
+function achCalc(s){
+  return ACH.map(function(a){
+    var target=a.dyn?a.dyn(s):a.target;
+    var cur=a.val(s)||0;
+    return {def:a,cur:cur,target:target,ok:cur>=target};
+  });
+}
+/* 奖杯徽标：已解锁 / 总数 */
+function renderTrophy(s){
+  var list=achCalc(s), n=0;
+  list.forEach(function(x){if(x.ok)n++;});
+  var b=document.getElementById('trophyBadge');
+  if(b)b.textContent=n+'/'+list.length;
+  var t=document.getElementById('trophyBtn');
+  if(t)t.classList.toggle('allin',n===list.length&&n>0);
+}
+/* 点击奖杯：弹跳 + 撒纸屑 + 开弹窗 */
+function openTrophy(){
+  var btn=document.getElementById('trophyBtn');
+  if(btn){
+    btn.classList.remove('pop');void btn.offsetWidth;btn.classList.add('pop');
+    trophySparks(btn);
+  }
+  ACH_VIEW.open=null;
+  renderAchList();
+  document.getElementById('achMask').classList.add('show');
+}
+function closeTrophy(){
+  document.getElementById('achMask').classList.remove('show');
+  ACH_VIEW.open=null;
+}
+/* 纸屑：从奖杯中心向外撒一把，0.9s 后清掉 */
+function trophySparks(btn){
+  var box=document.createElement('div');box.className='tsparks';
+  var r=btn.getBoundingClientRect();
+  var cols=['#F59E0B','#8B7CF6','#5EB8F5','#FB7185','#5EEAD4'];
+  for(var i=0;i<14;i++){
+    var p=document.createElement('i');
+    var a=Math.random()*Math.PI*2, dist=46+Math.random()*56;
+    p.style.left=(r.left+r.width/2-3)+'px';
+    p.style.top=(r.top+r.height/2-3)+'px';
+    p.style.background=cols[i%cols.length];
+    p.style.setProperty('--dx',(Math.cos(a)*dist).toFixed(1)+'px');
+    p.style.setProperty('--dy',(Math.sin(a)*dist-22).toFixed(1)+'px');
+    p.style.animationDelay=(Math.random()*.08)+'s';
+    box.appendChild(p);
+  }
+  document.body.appendChild(box);
+  setTimeout(function(){if(box.parentNode)box.parentNode.removeChild(box);},950);
+}
+/* 成就列表视图 */
+function renderAchList(){
+  ACH_VIEW.open=null;
+  var box=document.getElementById('achBox');
+  if(!STATE){box.innerHTML='';return;}
+  var list=achCalc(STATE);
+  var nUnlock=0;list.forEach(function(x){if(x.ok)nUnlock++;});
+  var st=STATE.stats||{};
+
+  /* 顶栏 */
+  var h='<div class="ach-head">'+
+    '<div class="hicon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M7 5.5H4.5V8a3 3 0 0 0 3 3M17 5.5h2.5V8a3 3 0 0 1-3 3"/><path d="M12 14v3.5M8.5 21h7l-.8-3.5h-5.4L8.5 21z"/></svg></div>'+
+    '<div class="htx"><div class="hname">成就殿堂</div>'+
+    '<div class="hsub">已解锁 <b>'+nUnlock+'</b> / '+list.length+' 个成就</div></div>'+
+    '<button class="ach-close" onclick="closeTrophy()">✕</button></div>';
+
+  /* 顶部大数字统计 */
+  h+='<div class="ach-top">'+
+    '<div class="cell2 gold"><div class="v">'+nUnlock+' <small>/ '+list.length+'</small></div><div class="k">已解锁成就</div></div>'+
+    '<div class="cell2"><div class="v">'+(STATE.doneCount||0)+' <small>/ '+(STATE.target||0)+'</small></div><div class="k">累计完成题数</div></div>'+
+    '<div class="cell2 mint"><div class="v">'+(st.streak||0)+' <small>天</small></div><div class="k">连续刷题</div></div>'+
+    '</div>';
+
+  /* 分类筛选 */
+  h+='<div class="ach-chips">';
+  h+='<button class="chip'+(ACH_VIEW.cat==='all'?' on':'')+'" onclick="achChip(\'all\')">全部<span class="n">'+nUnlock+'/'+list.length+'</span></button>';
+  for(var ck in ACH_CATS){
+    var c=ACH_CATS[ck];
+    var tt=list.filter(function(x){return x.def.cat===ck;}).length;
+    var uu=list.filter(function(x){return x.def.cat===ck&&x.ok;}).length;
+    h+='<button class="chip'+(ACH_VIEW.cat===ck?' on':'')+'" onclick="achChip(\''+ck+'\')">'+c.name+'<span class="n">'+uu+'/'+tt+'</span></button>';
+  }
+  h+='</div>';
+
+  /* 卡片网格 */
+  var show=list.filter(function(x){return ACH_VIEW.cat==='all'||x.def.cat===ACH_VIEW.cat;});
+  if(!show.length){
+    h+='<div class="ad-empty">这个分类下还没有成就</div>';
+  }else{
+    h+='<div class="ach-grid">';
+    show.forEach(function(x){h+=achCardHTML(x);});
+    h+='</div>';
+  }
+  box.innerHTML=h;
+}
+function achChip(cat){ACH_VIEW.cat=cat;renderAchList();}
+/* 单张成就卡片 */
+function achCardHTML(x){
+  var a=x.def,c=ACH_CATS[a.cat]||ACH_CATS.milestone;
+  var pct=x.target?Math.min(100,Math.round(x.cur/x.target*100)):100;
+  var num=x.target
+    ?'<b>'+Math.min(x.cur,x.target)+'</b> / '+x.target+' '+a.unit
+    :'<b>'+x.cur+'</b> '+a.unit;
+  return '<button class="ach-card'+(x.ok?'':' locked')+'" '+
+    'style="--c1:'+c.c1+';--c2:'+c.c2+';--tint:'+c.tint+';--bd:'+c.bd+'" '+
+    'onclick="openAchDetail(\''+a.id+'\')">'+
+    (x.ok?'<span class="aok">✓</span>':'')+
+    '<div class="arow"><div class="aicon">'+a.icon+'</div>'+
+    '<div class="atx"><div class="anm">'+esc(a.name)+'</div>'+
+    '<div class="ads">'+esc(a.desc)+'</div></div></div>'+
+    '<div class="apbar"><i style="width:'+pct+'%"></i></div>'+
+    '<div class="apnum"><span>'+(x.ok?'已解锁':'进行中')+'</span><span>'+num+'</span></div>'+
+    '</button>';
+}
+/* 成就详情视图（点卡片进来）*/
+function openAchDetail(id){
+  if(!STATE)return;
+  var list=achCalc(STATE), x=null;
+  list.forEach(function(y){if(y.def.id===id)x=y;});
+  if(!x)return;
+  var a=x.def,c=ACH_CATS[a.cat]||ACH_CATS.milestone;
+  var pct=x.target?Math.min(100,Math.round(x.cur/x.target*100)):100;
+  var left=Math.max(0,x.target-x.cur);
+  var h='<div class="ach-detail'+(x.ok?'':' locked')+'" '+
+    'style="--c1:'+c.c1+';--c2:'+c.c2+';--tint:'+c.tint+';--bd:'+c.bd+'">'+
+    '<button class="ach-back" onclick="renderAchList()">‹ 返回</button>'+
+    '<div class="ad-icon">'+a.icon+'</div>'+
+    '<div class="ad-name">'+esc(a.name)+'</div>'+
+    '<div class="ad-cat">'+c.name+'</div>'+
+    '<div class="ad-desc">'+esc(a.desc)+'</div>'+
+    '<div class="ad-prog"><div class="apbar"><i style="width:'+pct+'%"></i></div>'+
+    '<div class="ad-pnum"><b>'+(x.target?Math.min(x.cur,x.target)+' / '+x.target+' '+a.unit:'')+'</b>'+
+    '<span>'+(x.target?Math.round(pct)+'%':'')+'</span></div></div>'+
+    '<div class="ad-state '+(x.ok?'ok':'no')+'">'+
+    (x.ok?'✓ 已解锁':('未解锁 · 还差 '+left+' '+a.unit))+'</div>'+
+    '<div class="ad-btns">'+
+    (a.id==='e3'||a.id==='x1'
+      ?'<button class="ad-btn" onclick="calFlash();closeTrophy()">去日历看看</button>'
+      :'')+
+    '<button class="ad-btn primary" onclick="closeTrophy()">'+(x.ok?'太棒了':'知道了')+'</button></div>'+
+    '</div>';
+  document.getElementById('achBox').innerHTML=h;
+  ACH_VIEW.open=id;
+}
+/* 日历高亮一下（从成就详情跳过来时用）*/
+function calFlash(){
+  var c=document.getElementById('cal');
+  if(!c)return;
+  c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');
+  setTimeout(function(){c.classList.remove('flash');},1300);
+  c.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
 /* ---------- 左侧：统计 ---------- */
 function renderStats(s){
   var doneN=s.doneCount, tgt=s.target;
@@ -279,6 +502,7 @@ function renderStats(s){
   renderStats2(s);
   renderWeekly(s);
   renderReminders(s);
+  renderTrophy(s);
 }
 
 /* ---------- 计划栏 ---------- */
@@ -537,12 +761,16 @@ function renderCalendar(s){
          「4」分不清是 4 号还是做了 4 题。颜色深浅继续编码做题量。 */
       var lvl=n>=8?4:n>=5?3:n>=3?2:1;
       cls+=' l'+lvl;
+      /* 提前日：当天做题量超出计划配额 —— 提前把后面的题做掉了，薄荷青 + 左上箭头 */
+      var early=n>(s.perDay||4);
+      if(early)cls+=' early';
       c.innerHTML='<span class="dn">'+d+'</span><span class="cnt">'+n+'</span>';
       var rows=(detail[ds]||[]).map(function(id){
         return '<div class="tr">#'+id+' '+esc(nameById[id]||'')+'</div>';
       }).join('');
       c.setAttribute('data-tip',head+'<div class="tr" style="color:var(--iris-d);font-weight:800">'+
-        n+' 题</div>'+rows);
+        n+' 题</div>'+rows+
+        (early?'<div class="tr" style="color:#0F766E;font-weight:800">↑ 提前 · 超出当日计划，做了 '+n+' 题</div>':''));
       monthTotal+=n;
     }else if(pausedDay){
       /* 暂停期间：斜纹灰，不算空缺 */

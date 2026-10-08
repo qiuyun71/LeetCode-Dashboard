@@ -28,7 +28,6 @@
 | ⭐ **错题本** | 任意题一键标记「经典 / 错题」+ 写备注，自动统计难度与考点分布 |
 | ↩️ **撤销 30 步** | 几乎每个操作都能 `Ctrl+Z` 退回 |
 | 🎨 **氛围感** | 水墨风竹林背景 + 雾气漂移 + 细雨 + 竹叶飘落，AI 生成的插画 |
-| 🔔 **每日提醒** | 到点弹 Windows 系统通知（Windows 限定，用 `PowerShell` 发通知） |
 | 📊 **统计与热力日历** | 连续天数、近 7 日均量、难度分布、单日完成最多纪录、悬停看当天做了哪几题 |
 
 ---
@@ -105,7 +104,7 @@ LEET_PLAN=_t_plan.json LEET_PORT=8799 python3 server.py
 
 ```
 leetcode-board/
-├── server.py            # 本地服务（HTTP + API + 提醒后台线程）
+├── server.py            # 本地服务（HTTP + API + 自动结算后台线程）
 ├── ui.html              # 界面结构 + 全部样式
 ├── app.js               # 前端逻辑
 ├── plan.json            # 你的刷题数据（本地文件，不进仓库）
@@ -245,14 +244,14 @@ cp plan.example.json plan.json     # 手动初始化
   - 超出当日计划配额的「**提前日**」标薄荷青 + `↑`（提前把后面的题做掉了）
   - **悬停某天直接看当天做了哪几道**
 - **更多**（弹窗）：学习统计（连续天数 / 7 日均量 / 难度分布 / 本周进度 /
-  单日完成最多纪录）、每日提醒（时间点设置）、数据管理（导出 JSON / CSV）、
+  单日完成最多纪录）、数据管理（导出 JSON / CSV）、
   重新开始（重新开始一轮 / 重置进度 / 恢复默认）
 
 ### 重置与重来
 | 操作 | 清掉 | 保留 |
 |------|------|------|
 | **重置进度** | 完成记录、已展开的天、换题池 | 总题数、每天题数；起始日改回今天 |
-| **恢复默认** | 上面全部 + 计划设置 | 提醒时段；回到初始化向导 |
+| **恢复默认** | 上面全部 + 计划设置 | 回到初始化向导 |
 | **重新开始一轮** | 当前轮进度 | **本轮记录归档进「往期轮次」**，可回看 |
 
 都带二次确认，都能撤销，都**只影响当前题单**。
@@ -290,7 +289,7 @@ cp plan.example.json plan.json     # 手动初始化
 
 | 接口 | 方法 | 参数 | 作用 |
 |------|------|------|------|
-| `/api/state` | GET | — | 全部状态（board / tasks / plan / lists / weekly / reminders） |
+| `/api/state` | GET | — | 全部状态（board / tasks / plan / lists / weekly） |
 | `/api/export` | GET | `?fmt=json\|csv` | 下载当前题单进度 |
 | `/api/setplan` | POST | `{limit,perDay,reset,markSetup}` | 设置计划，自动重排 |
 | `/api/restartplan` | POST | `{}` | 重新开启一轮（先归档，可撤销） |
@@ -309,8 +308,6 @@ cp plan.example.json plan.json     # 手动初始化
 | `/api/submit` | POST | `{day}` | 提交：勾选记完成，未勾选的留在当天（跨夜 auto_settle 才顺延） |
 | `/api/expand` | POST | — | 展开下一天 |
 | `/api/resetday` | POST | `{day}` | 重置该天 |
-| `/api/remind` | POST | `{enabled,slots}` | 保存提醒配置 |
-| `/api/testremind` | POST | — | 立即弹测试通知 |
 | `/api/undo` | POST | — | 撤销上一步 |
 | `/api/welcomeskip` / `/api/welcomereset` | POST | — | 欢迎页开关 |
 

@@ -5,7 +5,6 @@
 数据结构（plan.json）：
 {
   "activeList": "lc100",
-  "reminders": {"enabled":true,"slots":[{"time":"12:00","label":"中午提醒"}],"lastFired":{}},
   "lists": {
     "lc100": {
       "name": "LeetCode 100",
@@ -47,14 +46,6 @@ _history = []
 HIST_MAX = 30
 _last_saved = ""        # 最近一次落盘内容的内存快照，can_undo 用它免读文件
 
-DEFAULT_REMINDERS = {
-    "enabled": True,
-    "slots": [
-        {"time": "12:00", "label": "中午提醒"},
-        {"time": "18:30", "label": "晚间检查"},
-    ],
-    "lastFired": {},
-}
 DIFF_CN = {"easy": "简单", "medium": "中等", "hard": "困难"}
 
 
@@ -117,19 +108,6 @@ def can_undo():
 
 # ============ 题单结构 ============
 
-def ensure_reminders(root):
-    r = root.get("reminders")
-    if not isinstance(r, dict):
-        r = {}
-    r.setdefault("enabled", DEFAULT_REMINDERS["enabled"])
-    if not isinstance(r.get("slots"), list) or not r.get("slots"):
-        r["slots"] = [dict(s) for s in DEFAULT_REMINDERS["slots"]]
-    if not isinstance(r.get("lastFired"), dict):
-        r["lastFired"] = {}
-    root["reminders"] = r
-    return r
-
-
 def ensure_root(p):
     """兼容旧结构（顶层直接是题单），统一成 lists 结构"""
     if not isinstance(p.get("lists"), dict):
@@ -152,7 +130,7 @@ def ensure_root(p):
                     seen.add(t.get("id"))
                     probs.append(t)
             legacy["categories"] = [{"name": "默认分类", "problems": probs}]
-        p = {"activeList": "lc100", "reminders": p.get("reminders"),
+        p = {"activeList": "lc100",
              "lists": {"lc100": legacy}}
     if not p.get("activeList") or p["activeList"] not in p["lists"]:
         p["activeList"] = sorted(p["lists"].keys())[0] if p["lists"] else ""
@@ -167,7 +145,6 @@ def ensure_root(p):
         l.setdefault("pool", [])
         l.setdefault("done", [])
         l.setdefault("board", [])
-    ensure_reminders(p)
     return p
 
 
@@ -760,10 +737,8 @@ def state_view(p):
                 "marks": [], "markStats": marks_stats([]),
                 "weekly": weekly_view({"done": []}),
                 "recAll": cross_plan_record(p),
-                "reminders": {"enabled": False, "slots": []},
                 "canUndo": can_undo()}
     dl = done_list(l)
-    r = ensure_reminders(p)
     try:
         _cands, _csrc = candidate_pool(p, l)
     except Exception:
@@ -802,7 +777,6 @@ def state_view(p):
         "marks": marks_view(l),
         "markStats": marks_stats(marks_view(l)),
         "weekly": weekly_view(l),
-        "reminders": {"enabled": bool(r.get("enabled")), "slots": r.get("slots", [])},
         "canUndo": can_undo(),
         "build": build_stamp(),
     }
@@ -1259,8 +1233,6 @@ def do_reset_plan(p, l, mode="progress"):
                      起始日改回今天，重新排第一天。
     mode='all'     ：在上面基础上把计划设置也恢复默认（limit / perDay），
                      并回到首次使用的初始化向导（setupDone=False）。
-
-    提醒时段属于个人偏好，两种模式都保留。
     """
     l["done"] = []
     l["pool"] = []
@@ -1710,7 +1682,7 @@ def do_setstart(p, key, date):
     return True
 
 
-# ============ 提醒 ============
+# ============ 系统通知 ============
 
 def send_toast(title, body):
     """弹 Windows 系统通知。返回 (ok, msg)：ok=已提交给系统；msg=失败原因（前端可见）"""
@@ -1744,73 +1716,11 @@ def send_toast(title, body):
     return False, "通知脚本没有返回结果"
 
 
-def today_summary(p):
-    """当前要做的题。与前端 renderBoard 的「当前天」保持一致：
-    最后一个未完成的普通天；它做完后才轮到末尾（可能是补做日）。"""
-    l = get_list(p)
-    if l is None:
-        return 0, 0, []
-    board = l.get("board", [])
-    if not board:
-        return 0, 0, []
-    last_n = -1
-    for i, d in enumerate(board):
-        if not d.get("extra"):
-            last_n = i
-    cur = len(board) - 1
-    if last_n >= 0 and not board[last_n].get("done"):
-        cur = last_n
-    tasks = board[cur].get("tasks", [])
-    total = len(tasks)
-    done = sum(1 for t in tasks if t.get("checked"))
-    names = [t.get("name", "") for t in tasks if not t.get("checked")]
-    return done, total, names
-
-
-def remind_body(p):
-    """提醒文案的正文（定时提醒和测试通知共用一份措辞）"""
-    done, total, names = today_summary(p)
-    left = total - done
-    if total == 0:
-        return "今天的题都清完了，休息一下 🎉"
-    if left == 0:
-        return "今天的 %d 题已全部勾选，记得点「确定完成」" % total
-    tip = "、".join(names[:3])
-    if len(names) > 3:
-        tip += " 等"
-    return "还剩 %d 题：%s" % (left, tip)
-
-
-def do_remind_config(p, data):
-    r = ensure_reminders(p)
-    if "enabled" in data:
-        r["enabled"] = bool(data.get("enabled"))
-    slots = data.get("slots")
-    if isinstance(slots, list):
-        clean = []
-        for s in slots:
-            if not isinstance(s, dict):
-                continue
-            t = str(s.get("time", "")).strip()
-            try:
-                hh, mm = t.split(":")
-                if 0 <= int(hh) <= 23 and 0 <= int(mm) <= 59:
-                    clean.append({"time": "%02d:%02d" % (int(hh), int(mm)),
-                                  "label": str(s.get("label", "提醒")).strip() or "提醒"})
-            except Exception:
-                continue
-        clean.sort(key=lambda x: x["time"])
-        r["slots"] = clean
-    return r
-
-
-def reminder_worker():
+def settle_worker():
+    """后台巡检：跨天自动结算（20s 一巡，日期驱动，停机重启会补齐）"""
     while True:
         try:
-            now = datetime.datetime.now()
-            hm = now.strftime("%H:%M")
-            today = now.date().isoformat()
-            fire = None
+            today = datetime.date.today().isoformat()
             note = None
             with _lock:
                 p = ensure_root(load_plan())
@@ -1824,24 +1734,8 @@ def reminder_worker():
                         note = settle_msg(info)
                     else:
                         _history.pop()   # 没动数据就不留撤销点
-                r = ensure_reminders(p)
-                l_rem = get_list(p)
-                if r.get("enabled") and not (l_rem and l_rem.get("paused")):
-                    for slot in r.get("slots", []):
-                        st = str(slot.get("time", "")).strip()
-                        if st != hm or r["lastFired"].get(st) == today:
-                            continue
-                        l = get_list(p)
-                        lname = l.get("name", "刷题") if l else "刷题"
-                        fire = ("%s · %s" % (lname, slot.get("label", "提醒")),
-                                remind_body(p))
-                        r["lastFired"][st] = today
-                        save_plan(p)
-                        break
             if note:
                 send_toast("看板 · 自动结算", note)   # 锁外弹，不阻塞请求
-            if fire:
-                send_toast(fire[0], fire[1])   # 在锁外弹：PowerShell 慢也不阻塞请求
         except Exception:
             pass
         time.sleep(20)
@@ -2013,17 +1907,6 @@ class Handler(BaseHTTPRequestHandler):
             data = {}
         path = self.path.split("?")[0]
 
-        # 测试通知：只在锁里取文案，弹窗放到锁外（PowerShell 最长可能跑十几秒）
-        if path.startswith("/api/testremind"):
-            with _lock:
-                p = ensure_root(load_plan())
-                l0 = get_list(p)
-                lname = l0.get("name", "刷题") if l0 else "刷题"
-                title, body = "%s · 测试提醒" % lname, remind_body(p)
-            ok, msg = send_toast(title, body)
-            self._json({"ok": ok, "msg": msg})
-            return
-
         with _lock:
             p = ensure_root(load_plan())
             di = int(data.get("day", -1))
@@ -2165,12 +2048,6 @@ class Handler(BaseHTTPRequestHandler):
                 save_plan(p)
                 self._json({"ok": True, "state": state_view(p)})
                 return
-            if path.startswith("/api/remind"):
-                push_history(p)
-                do_remind_config(p, data)
-                save_plan(p)
-                self._json({"ok": True, "state": state_view(p)})
-                return
 
             # 以下操作需要当前题单
             if l is None:
@@ -2260,7 +2137,6 @@ def ensure_plan_file():
                 p = json.load(f)
         else:                                   # 连模板都没有：建一个最小骨架
             p = {"activeList": "lc100", "setupDone": False,
-                 "reminders": {"enabled": False, "slots": [], "lastFired": {}},
                  "lists": {"lc100": {"name": "LeetCode 100", "startDate":
                                      datetime.date.today().isoformat(),
                                      "perDay": 4, "categories": []}}}
@@ -2300,7 +2176,7 @@ def main():
         print("端口 %d 已被占用：看板可能已经在运行了，不要重复启动" % PORT, flush=True)
         return
     srv.daemon_threads = True
-    t = threading.Thread(target=reminder_worker, daemon=True)
+    t = threading.Thread(target=settle_worker, daemon=True)
     t.start()
     print("leetcode board on http://127.0.0.1:%d" % PORT, flush=True)
     srv.serve_forever()

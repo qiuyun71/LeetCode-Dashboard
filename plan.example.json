@@ -1,22 +1,5 @@
 {
   "activeList": "lc100",
-  "reminders": {
-    "enabled": true,
-    "slots": [
-      {
-        "time": "12:00",
-        "label": "中午提醒"
-      },
-      {
-        "time": "18:30",
-        "label": "晚间检查"
-      }
-    ],
-    "lastFired": {
-      "12:00": "2026-10-07",
-      "18:30": "2026-10-07"
-    }
-  },
   "lists": {
     "lc100": {
       "name": "LeetCode 100",

@@ -2,7 +2,7 @@
 """seed_lc100.py · 写入 LeetCode 100（Hot 100）题单数据
 
 结构：categories 按分类存题目定义；days 由服务端从 categories 展平后按 perDay 切分。
-保留已有的 reminders 配置；题单进度（done/board）重置。
+题单进度（done/board）重置。
 """
 import json
 import os
@@ -198,28 +198,9 @@ def main():
         for (i, n, d, h) in POOL
     ]
 
-    # 保留已有 reminders
-    rem = {
-        "enabled": True,
-        "slots": [
-            {"time": "12:00", "label": "中午提醒"},
-            {"time": "18:30", "label": "晚间检查"},
-        ],
-        "lastFired": {},
-    }
-    if os.path.isfile(PLAN):
-        try:
-            with open(PLAN, "r", encoding="utf-8") as f:
-                old = json.load(f)
-            if isinstance(old.get("reminders"), dict):
-                rem = old["reminders"]
-        except Exception:
-            pass
-
     total = sum(len(c["problems"]) for c in cats)
     plan = {
         "activeList": "lc100",
-        "reminders": rem,
         "lists": {
             "lc100": {
                 "name": "LeetCode 100",

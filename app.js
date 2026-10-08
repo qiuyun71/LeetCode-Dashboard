@@ -540,7 +540,6 @@ function renderStats(s){
   renderTaskList(s);
   renderStats2(s);
   renderWeekly(s);
-  renderReminders(s);
   renderTrophy(s);
 }
 
@@ -1203,10 +1202,6 @@ function openPanel(kind){
     title.innerHTML='错题本<span class="msub">'+esc(s.activeName||'')+'</span>';
     modal.classList.add('wide');
     body.innerHTML=renderMarks(s);
-  }else if(kind==='remind'){
-    title.innerHTML='每日提醒<span class="msub">到点弹 Windows 通知</span>';
-    take('dockRemind');
-    renderReminders(s);
   }else if(kind==='data'){
     title.innerHTML='数据管理<span class="msub">'+esc(s.activeName||'')+'</span>';
     body.innerHTML=
@@ -1564,73 +1559,6 @@ function renderWeekly(s){
   var nav=document.getElementById('navWk');
   if(nav)nav.textContent='本周 '+(w.thisWeekTotal||0)+' 题'+
     (w.delta==null?'':'（'+(w.delta>0?'↑':'↓')+Math.abs(w.delta)+'%）');
-}
-
-/* ---------- 提醒设置 ---------- */
-function renderReminders(s){
-  var r=s.reminders||{enabled:false,slots:[]};
-  document.getElementById('remEnabled').checked=!!r.enabled;
-  var navR=document.getElementById('navRem');
-  if(navR){
-    var ns=(r.slots||[]).length;
-    navR.textContent=r.enabled?('每日 '+ns+' 次'):'未开启';
-  }
-  var box=document.getElementById('slotBox');
-  box.innerHTML='';
-  (r.slots||[]).forEach(function(sl,i){
-    var row=document.createElement('div');
-    row.className='slotline';
-    row.innerHTML='<input type="time" value="'+esc(sl.time)+'" data-i="'+i+'">'+
-      '<span>'+esc(sl.label||'提醒')+'</span>'+
-      '<button class="rm" data-i="'+i+'" data-tip="删除">✕</button>';
-    box.appendChild(row);
-  });
-  if(!(r.slots||[]).length){
-    box.innerHTML='<div class="remnote" style="margin:8px 0 2px">还没设提醒时间，点下面「加一个时间」</div>';
-  }
-  box.querySelectorAll('input[type=time]').forEach(function(inp){
-    inp.onchange=function(){saveSlots();};
-  });
-  box.querySelectorAll('.rm').forEach(function(b){
-    b.onclick=function(){removeSlot(+b.dataset.i);};
-  });
-}
-function collectSlots(){
-  var out=[];
-  document.querySelectorAll('#slotBox .slotline').forEach(function(row){
-    var t=row.querySelector('input[type=time]').value;
-    var lbl=row.querySelector('span').textContent;
-    if(t)out.push({time:t,label:lbl});
-  });
-  return out;
-}
-async function saveSlots(slots){
-  var arr=slots||collectSlots();
-  var j=await post('/api/remind',{slots:arr,enabled:document.getElementById('remEnabled').checked});
-  if(j.ok){STATE=j.state;renderReminders(j.state);toast('提醒时间已保存');}
-}
-async function toggleRemind(on){
-  await saveSlots();
-  toast(on?'已开启每日提醒':'已关闭每日提醒');
-}
-function addSlot(){
-  var slots=collectSlots();
-  if(slots.length>=6){toast('最多 6 个提醒时间');return;}
-  var used={};slots.forEach(function(x){used[x.time]=1;});
-  var cand=['09:00','12:00','15:00','18:30','21:00','22:30'].filter(function(t){return !used[t];});
-  slots.push({time:cand[0]||'12:00',label:'提醒'});
-  slots.sort(function(a,b){return a.time<b.time?-1:1;});
-  saveSlots(slots);
-}
-function removeSlot(i){
-  var slots=collectSlots();
-  slots.splice(i,1);
-  saveSlots(slots);
-}
-async function testRemind(){
-  var j=await post('/api/testremind');
-  if(j.ok){toast('测试通知已弹出，看右下角');}
-  else{toast('通知发送失败：'+(j.msg||'未知原因'));}
 }
 
 /* ---------- 导出 ---------- */

@@ -94,14 +94,14 @@
         backdrop-filter:blur(14px);
         border-right:1px solid var(--line);
         box-shadow:6px 0 28px rgba(139,124,246,.08);
-        padding:14px 18px 16px;}
+        padding:11px 18px 12px;}
   .side::-webkit-scrollbar{width:9px}
   .side::-webkit-scrollbar-track{background:transparent}
   .side::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--iris-l),var(--violet-l));
         border-radius:9px;border:2px solid transparent;background-clip:padding-box;}
   .side::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--iris),var(--violet));
         border-radius:9px;border:2px solid transparent;background-clip:padding-box;}
-  .side h2{font-size:13.5px;font-weight:800;color:var(--ink);margin:0 0 8px;
+  .side h2{font-size:13.5px;font-weight:800;color:var(--ink);margin:0 0 5px;
            letter-spacing:.4px;display:flex;justify-content:space-between;align-items:center;}
   .side h2::before{content:"";width:4px;height:15px;border-radius:99px;
                    background:linear-gradient(180deg,var(--iris),var(--violet));
@@ -147,13 +147,13 @@
            background:linear-gradient(120deg,var(--iris-d),var(--violet-d));
            -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
   .stat .k{font-size:11.5px;color:var(--ink-3);margin-top:4px;font-weight:600;position:relative;z-index:1;}
-  .swnote{font-size:11.5px;color:var(--ink-3);line-height:1.55;margin:-2px 0 12px;
+  .swnote{font-size:11.5px;color:var(--ink-3);line-height:1.55;margin:-2px 0 7px;
           padding:8px 11px;background:linear-gradient(100deg,#FCFBFF,#F8F6FF);
           border:1px solid var(--line);border-radius:12px;}
   .swnote b{color:var(--iris-d);font-weight:800;}
 
   /* 热力图（侧栏内紧凑版） */
-  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:5px;
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3.5px;margin-bottom:4px;
        max-width:262px;margin-left:auto;margin-right:auto;}
   .cal .wd{font-size:10px;color:var(--ink-3);text-align:center;padding-bottom:1px;font-weight:700;}
   .cal .cell{aspect-ratio:1/0.92;border-radius:8px;background:#F3F0FA;
@@ -196,7 +196,7 @@
   .cal .cell.end::after{background:var(--sky);box-shadow:0 0 5px var(--glow-v);}
   .cal .cell{position:relative;}
   /* 月份导航 */
-  .calnav{display:flex;align-items:center;gap:6px;margin-bottom:7px;}
+  .calnav{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
   .calnav .cny{flex:1;text-align:center;font-size:13px;font-weight:800;color:var(--ink);
                letter-spacing:.2px;}
   .calnav .cnbtn{border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);
@@ -216,7 +216,7 @@
             font-weight:600;}
   .calrange b{color:var(--iris-d);font-weight:800;}
   .legend{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-3);
-          justify-content:flex-end;margin-bottom:12px;font-weight:600;flex-wrap:wrap;}
+          justify-content:flex-end;margin-bottom:6px;font-weight:600;flex-wrap:wrap;}
   .legend i{width:11px;height:11px;border-radius:4px;display:inline-block;}
   /* 从成就详情跳过来时，日历闪一下吸引注意 */
   .cal.flash{animation:calFlash 1.3s ease;}
@@ -609,34 +609,7 @@
   .wk .wcell.best{background:linear-gradient(150deg,#F0EDFF,#EAF4FF);border-color:var(--iris-l);
                   box-shadow:0 3px 12px var(--glow-p);}
 
-  /* 提醒设置 */
-  .remrow{display:flex;align-items:center;justify-content:space-between;
-          padding:8px 0;font-size:12.5px;color:var(--ink-2);font-weight:600;}
-  .remrow+.remrow{border-top:1px solid var(--line);}
-  .switch{position:relative;width:40px;height:22px;flex:none;cursor:pointer;}
-  .switch input{opacity:0;width:0;height:0;position:absolute;}
-  .switch .track{position:absolute;inset:0;background:#E4DBEE;border-radius:99px;transition:.25s;}
-  .switch .knob{position:absolute;top:2.5px;left:2.5px;width:17px;height:17px;background:#fff;
-                border-radius:99px;transition:.25s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
-  .switch input:checked+.track{background:linear-gradient(100deg,var(--iris),var(--violet));
-                               box-shadow:0 0 10px var(--glow-p);}
-  .switch input:checked+.track+.knob{transform:translateX(18px);}
-  .slotline{display:flex;align-items:center;gap:7px;padding:7px 0;font-size:12.5px;
-            color:var(--ink-2);font-weight:600;}
-  .slotline+.slotline{border-top:1px solid var(--line);}
-  .slotline input[type=time]{border:1.5px solid var(--line);border-radius:9px;padding:5px 8px;
-                             font-size:12.5px;font-family:inherit;color:var(--ink);outline:none;
-                             background:var(--card);transition:.2s;}
-  .slotline input[type=time]:focus{border-color:var(--iris);box-shadow:0 0 0 3px var(--glow-p);}
-  .slotline .rm{margin-left:auto;border:none;background:transparent;color:#CFC9E4;
-                cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;border-radius:6px;}
-  .slotline .rm:hover{color:#F43F5E;background:#FFF1F3;}
-  .remact{display:flex;gap:8px;margin-top:9px;}
-  .remact button{flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--ink-2);
-                 border-radius:11px;padding:8px;font-size:12.5px;font-weight:700;
-                 cursor:pointer;font-family:inherit;transition:.2s;}
-  .remact button:hover{border-color:var(--violet);color:var(--violet-d);background:#F8F5FF;
-                       transform:translateY(-1px);box-shadow:0 3px 10px var(--glow-v);}
+  /* 小字备注（本周统计等处也用） */
   .remnote{font-size:11px;color:var(--ink-3);margin-top:8px;line-height:1.65;font-weight:600;}
 
   /* 计划栏 */
@@ -1110,7 +1083,7 @@
     <h2>题单</h2>
     <div class="plists" id="plists"></div>
 
-    <div class="statrow" style="margin-top:20px">
+    <div class="statrow" style="margin-top:14px">
       <div class="stat"><div class="v" id="sDone">0</div><div class="k">已完成题数</div></div>
       <div class="stat"><div class="v" id="sLeft">100</div><div class="k">剩余题数</div></div>
     </div>
@@ -1139,7 +1112,7 @@
       <i style="background:#8B7CF6"></i><i style="background:linear-gradient(135deg,#8B7CF6,#5EB8F5)"></i> 做题量
     </div>
 
-    <h2 style="margin-top:18px">更多</h2>
+    <h2 style="margin-top:12px">更多</h2>
     <div class="navlist">
       <button class="navitem" onclick="openPanel('marks')">
         <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 5.9 6.6.9-4.8 4.6 1.2 6.5L12 17.3 6.1 20.4l1.2-6.5L2.5 9.3l6.6-.9z"/></svg></span>
@@ -1150,11 +1123,6 @@
         <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M7 21V11"/><path d="M12 21V4"/><path d="M17 21v-7"/></svg></span>
         <span class="ntx">学习统计</span>
         <span class="nav-badge" id="navWk">0</span>
-      </button>
-      <button class="navitem" onclick="openPanel('remind')">
-        <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-        <span class="ntx">每日提醒</span>
-        <span class="nav-badge" id="navRem">关</span>
       </button>
       <button class="navitem" onclick="openPanel('data')">
         <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.66 3.58 3 8 3s8-1.34 8-3v-13"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg></span>
@@ -1280,7 +1248,7 @@
 <div class="tip" id="tip"></div>
 <div class="pop" id="listPop"></div>
 
-<!-- 隐藏容器：统计 / 本周 / 提醒 的 DOM 常驻在此，
+<!-- 隐藏容器：统计 / 本周 的 DOM 常驻在此，
      弹窗打开时把它们「搬运」到弹窗里渲染，关闭时再搬回来。
      这样只需维护一份渲染逻辑，不用为弹窗重写一遍。 -->
 <div id="dock" style="display:none">
@@ -1321,24 +1289,6 @@
     </div>
     <div class="wk" id="wk"></div>
     <div class="remnote" id="wkNote"></div>
-  </div>
-
-  <div class="pblock" id="dockRemind">
-    <div class="statbox">
-      <div class="remrow">
-        <span>开启提醒</span>
-        <label class="switch">
-          <input type="checkbox" id="remEnabled" onchange="toggleRemind(this.checked)">
-          <span class="track"></span><span class="knob"></span>
-        </label>
-      </div>
-      <div id="slotBox"></div>
-    </div>
-    <div class="remact">
-      <button onclick="addSlot()">+ 加一个时间</button>
-      <button onclick="testRemind()">测试通知</button>
-    </div>
-    <div class="remnote">到点会弹 Windows 通知（右下角），需要看板服务在运行。收不到就到 设置 → 系统 → 通知 里确认「Windows PowerShell」没被关。</div>
   </div>
 </div>
 

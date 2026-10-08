@@ -1,5 +1,5 @@
 ﻿param(
-  [string]$Title = "力扣提醒",
+  [string]$Title = "力扣看板",
   [string]$Body = ""
 )
 # Windows 只给「有开始菜单快捷方式背书的 AUMID」弹横幅，没有的会被静默压进通知中心。

@@ -777,10 +777,9 @@ function dayHTML(day, di, s, isCur){
     "<div class='tr'>· 没勾选的题会自动顺延到第二天</div>"+
     "<div class='tr'>· 顺延超过 "+per*2+" 道的部分，挪到计划末尾的补做日</div>"+
     "<div class='tr'>· 补做日在日历上是<b style='color:#B45309'>琥珀色</b>那天</div>";
-  var btn='<button class="submit" data-di="'+di+'" '+(fin?'disabled':'')+
-    (fin?'':' data-tip="'+qtip+'"')+'>'+
+  var btn='<button class="submit" data-di="'+di+'" '+(fin?'disabled':'')+'>'+
     (fin?'已完成':'确定完成')+
-    (fin?'':'<span class="swq">?</span>')+'</button>';
+    (fin?'':'<span class="swq" data-tip="'+qtip+'">?</span>')+'</button>';
   var tip='';
   // 展开 / 撤销只在「当天题板」里出现，历史记录里不重复渲染
   var acts='';

@@ -215,8 +215,10 @@
   .calrange{font-size:11px;color:var(--ink-3);line-height:1.55;margin:-2px 0 5px;
             font-weight:600;}
   .calrange b{color:var(--iris-d);font-weight:800;}
-  .legend{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-3);
-          justify-content:flex-end;margin-bottom:6px;font-weight:600;flex-wrap:wrap;}
+  .legend{display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+          font-size:10.5px;color:var(--ink-3);margin-bottom:6px;font-weight:600;}
+  .legend .lrow{display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .legend .lrow>span{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;}
   .legend i{width:11px;height:11px;border-radius:4px;display:inline-block;}
   /* 从成就详情跳过来时，日历闪一下吸引注意 */
   .cal.flash{animation:calFlash 1.3s ease;}
@@ -312,7 +314,7 @@
   .tip.show{opacity:1;transform:translateY(0);}
   .tip b{color:var(--iris-d);font-weight:800;}
   .tip .tt{font-weight:800;margin-bottom:3px;}
-  .tip .tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-3);}
+  .tip .tr{color:var(--ink-3);white-space:normal;overflow-wrap:anywhere;}
 
   /* 说明问号：hover 出 tooltip，不再铺一大段文字 */
   .swq{flex:none;display:inline-flex;align-items:center;justify-content:center;
@@ -1126,14 +1128,18 @@
     <div class="cal" id="cal"></div>
     <div class="calrange" id="calRange"></div>
     <div class="legend">
-      <i style="background:#FFFFFF;border:1px solid #E9ECF1"></i>未到
-      <i style="background:#FFE4E6;border:1px dashed #FDA4AF"></i>空缺
-      <i style="background:#F7F5FC"></i>计划外
-      <i style="background:#FEF3C7;border:1px solid #FCD34D"></i>补做
-      <i style="background:linear-gradient(135deg,#D9F7F0,#BDF0E3);border:1px solid #6EE7C7"></i>提前
-      <span style="margin:0 2px">·</span>
-      <i style="background:#E4E0FF"></i><i style="background:#C9C1FF"></i>
-      <i style="background:#8B7CF6"></i><i style="background:linear-gradient(135deg,#8B7CF6,#5EB8F5)"></i> 做题量
+      <div class="lrow">
+        <span><i style="background:#FFFFFF;border:1px solid #E9ECF1"></i>未到</span>
+        <span><i style="background:#FFE4E6;border:1px dashed #FDA4AF"></i>空缺</span>
+        <span><i style="background:#F7F5FC"></i>计划外</span>
+        <span><i style="background:#FEF3C7;border:1px solid #FCD34D"></i>补做</span>
+        <span><i style="background:linear-gradient(135deg,#D9F7F0,#BDF0E3);border:1px solid #6EE7C7"></i>提前</span>
+      </div>
+      <div class="lrow">
+        <span>
+          <i style="background:#E4E0FF;margin-right:2px"></i><i style="background:#C9C1FF;margin-right:2px"></i><i style="background:#8B7CF6;margin-right:2px"></i><i style="background:linear-gradient(135deg,#8B7CF6,#5EB8F5);margin-right:4px"></i>做题量
+        </span>
+      </div>
     </div>
 
     <h2 style="margin-top:12px">更多</h2>

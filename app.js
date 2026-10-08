@@ -1058,7 +1058,8 @@ function dayHTML(day, di, s, isCur){
   var per=(s.plan&&s.plan.perDay)||4;
   // 注意：data-tip 是 HTML 属性，里面只能用单引号，双引号会把属性提前闭合
   var qtip="<div class='tt'>没做完也能直接点「确定完成」</div>"+
-    "<div class='tr'>· 没勾选的题会自动顺延到第二天</div>"+
+    "<div class='tr'>· 没勾的题会<b style='color:#B45309'>留在今天</b>，回去做完再交</div>"+
+    "<div class='tr'>· 只有当天结束（午夜自动结算）才顺延到第二天</div>"+
     "<div class='tr'>· 顺延超过 "+per*2+" 道的部分，挪到计划末尾的补做日</div>"+
     "<div class='tr'>· 补做日在日历上是<b style='color:#B45309'>琥珀色</b>那天</div>";
   var btn='<button class="submit" data-di="'+di+'" '+(fin?'disabled':'')+'>'+
@@ -1367,7 +1368,8 @@ async function submit(di){
 /* ============ 结算页 ============
    提交后弹出来的那一屏：这次做完了什么、难度分布、以及记录记到哪一天。
    当天全部完成时，统计最上方多一条庆祝横幅，主按钮变「挑战自我」
-   （加一道题继续做）；没完成时主按钮换成鼓励词，点击照样回当天题板。 */
+   （加一道题继续做）；没完成时剩下的题留在今天——主按钮是
+   「还差 N 题 · 一鼓作气」，点它关弹窗回当天题板接着做。 */
 function showSettle(j){
   var picked=j.picked||[], n=picked.length;
   var diff={'easy':0,'medium':0,'hard':0};
@@ -1387,7 +1389,7 @@ function showSettle(j){
   }
 
   /* 庆祝判定：这一交把当天板面上的题全收了（没顺延、也没剩题）。
-     「挑战自我」加题后再交一次也走这里——carried=0 一样庆祝。 */
+     「挑战自我」加题后再交一次也走这里——remain=0 一样庆祝。 */
   var allDone=!j.carried && !j.remain;
 
   /* 当天的总完成量 / 第几天：交完后板面已清空，从新 state 里按计划日期找回那天 */
@@ -1430,10 +1432,11 @@ function showSettle(j){
     }).join('')+'</div>';
   }
 
-  // 顺延/ 补做情况
+  // 没做完的题留在今天（只有午夜自动结算才顺延）/ 补做情况
   var tail=[];
-  if(j.carried>0)tail.push(j.carried+' 题没勾，已顺延到'+(j.extra>0?'补做日':'第二天'));
+  if(j.carried>0)tail.push(j.carried+' 题没勾，已顺延到'+(j.extra>0?'补做日':'第二天的题板'));
   if(j.extra>0)tail.push(j.extra+' 题超出上限，挪到计划末尾的补做日');
+  if(j.remain>0)tail.push('还剩 '+j.remain+' 题留在今天，回去「一鼓作气」把它做完');
   if(tail.length){
     h+='<div class="scar">'+tail.map(esc).join(' · ')+'</div>';
   }
@@ -1447,12 +1450,13 @@ function showSettle(j){
 
   /* 底部按钮：
      全部完成 → 「⚔ 挑战自我」：关弹窗给当天加一道题，想多做题只能这么加
-     没完成   → 鼓励词（还差 N 题 · 一鼓作气），点击关弹窗回当天题板 */
+     没完成   → 鼓励词（还差 N 题 · 一鼓作气），点击关弹窗回当天题板——
+                 没勾的题还留在今天的板面上，回去接着做完就行 */
   var primary;
   if(allDone){
     primary='<button class="sbtn primary" onclick="settleChallenge()">⚔ 挑战自我</button>';
-  }else if(j.carried>0){
-    primary='<button class="sbtn primary" onclick="settleBack()">还差 '+j.carried+
+  }else if(j.remain>0){
+    primary='<button class="sbtn primary" onclick="settleBack()">还差 '+j.remain+
       ' 题 · 一鼓作气 💪</button>';
   }else{
     primary='<button class="sbtn primary" onclick="settleBack()">继续把今天的题做完 →</button>';
@@ -1746,7 +1750,7 @@ function welRender(){
       '<div class="weldesc">'+
         '当前题单 <b>'+esc(nm)+'</b> 共 <b>'+all+' 题</b>。'+
         '设定总题数和每天做几道，看板会自动把题目排到每一天，'+
-        '没做完的还会顺延到第二天补回来。'+
+        '当天没做完的题会留在当天，午夜自动结算时才顺延到后面补。'+
       '</div>'+
       '<div class="welsec"><span class="n">1</span>设定你的刷题计划</div>'+
       '<div class="setgrid">'+
@@ -1775,7 +1779,7 @@ function welRender(){
         '<div class="guide"><div class="ic">✓</div><div>'+
           '<div class="gt">勾选做完的题</div>'+
           '<div class="gd">点题目卡片就能勾上。没做完也可以直接点「确定完成」，'+
-          '剩下的题会自动顺延到第二天补做。</div></div></div>'+
+          '剩下的题会留在今天，随时回去「一鼓作气」做完。</div></div></div>'+
         '<div class="guide"><div class="ic">⇄</div><div>'+
           '<div class="gt">做过的题可以「换一题」</div>'+
           '<div class="gd">某题以前刷过，点「换一题」从题库换一道没做过的，'+

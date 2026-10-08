@@ -1016,14 +1016,19 @@ def _push_to_extra(l, tasks):
 
 
 def do_submit(l, di, rec_date=None):
-    """提交：勾选的记入 done；未勾选的滚到后一天（欠账补回）
+    """提交：勾选的记入 done；未勾选的怎么处理，分两种情况：
+
+    1. 手动提交（rec_date=None，点「确定完成」）：没勾的题**留在当天**，
+       当天 done 保持 False，回题板「一鼓作气」把剩下的做完再交就行。
+       没做完不欠账、不挪窝——当天只有真正结束（午夜 auto_settle）才翻篇。
+    2. 午夜自动结算（auto_settle 传 rec_date=那天的计划日期）：没勾的按
+       欠账规则顺延——下一天最多接 perDay×2 道，**超出的不再往后续天堆**，
+       而是顺延到计划末尾新增的「补做日」（extra=True，日历上换颜色标注）。
+       这样欠账不会雪球式越滚越大、某天突然冒出十几道题。
 
     完成记录的日期：手动提交 = 今天（提前做后面几天的题也算今天的做题量）；
     自动结算传 rec_date = 那天的计划日期（昨晚忘了点提交，记录仍算昨天）。
 
-    欠账上限：下一天最多只接 perDay×2 道，**超出的不再往后续天堆**，
-    而是顺延到计划末尾新增的「补做日」（extra=True，日历上换颜色标注）。
-    这样欠账不会雪球式越滚越大、某天突然冒出十几道题。
     返回 (added, moved, remain, extra_n)
     """
     board = l.get("board", [])
@@ -1046,12 +1051,22 @@ def do_submit(l, di, rec_date=None):
     if not carry:
         b["tasks"] = []
         b["done"] = True
-        # completed 有值 = 这天之前交过了（「挑战自我」加题后的二次提交）：
+        # completed 有值 = 这天之前交过了（半途交过 /「挑战自我」加题后的二次提交）：
         # 这次是增量，累计而不是覆盖，否则当天总数会被冲掉
         prev = b.get("completed")
         b["deficit"] = (b.get("deficit") or 0) if prev is not None else 0
         b["completed"] = (prev + added) if prev is not None else added
         return added, 0, 0, 0
+
+    if rec_date is None:
+        # 手动提交：没勾的题留在今天。不算欠账（deficit 不动）、不往下天挪，
+        # 做完剩下的随时回来补交；一题没勾时added=0，除了 remain 什么都不改。
+        if added:
+            prev = b.get("completed")
+            b["completed"] = (prev + added) if prev is not None else added
+        b["tasks"] = carry
+        b["done"] = False
+        return added, 0, len(carry), 0
 
     per = max(1, int(l.get("perDay", 4) or 4))
     cap = per * 2

@@ -164,6 +164,29 @@ try:
         br.close()
     print("   JS 错误:", errs if errs else "无")
     assert not errs, "JS 错误: %s" % errs
+
+    # ---- 错题本 ----
+    print("\n== 4. 错题本 ==")
+    s = get("/api/state")
+    assert s.get("marks") == [] or s.get("marks") is not None, "state 应带 marks 字段"
+    assert "markStats" in s, "state 应带 markStats 字段"
+    tid = s["tasks"][0]["id"]
+    r = post("/api/mark", {"id": tid, "kind": "classic"})
+    assert r.get("ok"), "标记应成功"
+    mk = [m for m in r["state"]["marks"] if m["id"] == tid]
+    assert mk, "标记后应出现在 marks 里"
+    assert mk[0]["kind"] == "classic" and mk[0]["kindLabel"] == "经典"
+    assert mk[0]["name"], "应带题目名"
+    r = post("/api/mark", {"id": tid, "kind": "wrong", "note": "测试备注"})
+    mk = [m for m in r["state"]["marks"] if m["id"] == tid]
+    assert mk[0]["kind"] == "wrong", "应改成错题"
+    assert mk[0]["note"] == "测试备注", "备注应保存"
+    st = r["state"]["markStats"]
+    assert st["total"] >= 1 and st["wrong"] >= 1, "统计应计数"
+    r = post("/api/mark", {"id": tid, "kind": ""})
+    assert not [m for m in r["state"]["marks"] if m["id"] == tid], "取消标记后应移除"
+    print("   标记/改类型/备注/取消 全部正常，统计:", st["total"], "条")
+
     print("\n全部断言通过")
     ok = True
 finally:

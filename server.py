@@ -240,6 +240,102 @@ def all_problems_count(l):
     return len(flat_problems(l))
 
 
+# ============ 错题本 / 经典题标记 ============
+# marks: { 题号(str): {"kind": "classic"|"wrong", "at": "日期", "note": "备注"} }
+MARK_KINDS = {"classic": "经典", "wrong": "错题"}
+
+
+def marks_view(l):
+    """错题本视图：带题号、题目名、难度、分类、标记日期与备注"""
+    idmap = {}
+    for cn, t in flat_problems(l):
+        x = dict(t)
+        x["category"] = cn                # 分类名只在展平时带着，这里补回题目体
+        idmap[t.get("id")] = x
+    for t in l.get("pool", []):
+        x = dict(t)
+        x.setdefault("category", "")
+        idmap.setdefault(t.get("id"), x)
+
+    done_ids = {d.get("id") for d in done_list(l)}
+    out = []
+    for pid, m in (l.get("marks") or {}).items():
+        try:
+            pid_i = int(pid)
+        except Exception:
+            continue
+        if not isinstance(m, dict):
+            continue
+        kind = m.get("kind")
+        if kind not in MARK_KINDS:
+            continue                      # 脏数据直接跳过
+        t = idmap.get(pid_i) or {}
+        out.append({
+            "id": pid_i,
+            "name": t.get("name") or ("题 %s" % pid_i),
+            "difficulty": t.get("difficulty") or "easy",
+            "category": t.get("category") or "",
+            "hint": t.get("hint") or "",
+            "kind": kind,
+            "kindLabel": MARK_KINDS[kind],
+            "at": m.get("at") or "",
+            "note": m.get("note") or "",
+            "done": pid_i in done_ids,      # 有没有做出来过
+        })
+    # 错题在前、其次经典；同组按标记日期倒序
+    order = {"wrong": 0, "classic": 1}
+    out.sort(key=lambda x: (order.get(x["kind"], 9), x["at"] or ""), reverse=False)
+    out.sort(key=lambda x: order.get(x["kind"], 9))
+    return out
+
+
+def marks_stats(items):
+    """错题本统计：总数 / 分类分布 / 难度分布 / 做出来过多少"""
+    by_diff = {"easy": 0, "medium": 0, "hard": 0}
+    by_cat = {}
+    done_n = 0
+    for m in items:
+        d = m.get("difficulty")
+        if d in by_diff:
+            by_diff[d] += 1
+        cn = m.get("category") or "未分类"
+        by_cat[cn] = by_cat.get(cn, 0) + 1
+        if m.get("done"):
+            done_n += 1
+    top = sorted(by_cat.items(), key=lambda kv: -kv[1])[:8]
+    return {
+        "total": len(items),
+        "classic": sum(1 for m in items if m["kind"] == "classic"),
+        "wrong": sum(1 for m in items if m["kind"] == "wrong"),
+        "solved": done_n,
+        "byDiff": by_diff,
+        "topCat": [{"name": k, "n": v} for k, v in top],
+    }
+
+
+def do_mark(l, pid, kind=None, note=None):
+    """标记 / 取消标记。kind 为空或非法表示取消。返回 (ok, err)"""
+    try:
+        pid = int(pid)
+    except Exception:
+        return False, "bad_id"
+    marks = l.setdefault("marks", {})
+    key = str(pid)
+    if not kind:
+        marks.pop(key, None)
+        return True, None
+    if kind not in MARK_KINDS:
+        return False, "bad_kind"
+    cur = marks.get(key) or {}
+    if note is not None:
+        cur["note"] = str(note)[:200]
+    cur["kind"] = kind
+    cur.setdefault("at", datetime.date.today().isoformat())
+    cur["at"] = cur["at"] or datetime.date.today().isoformat()
+    marks[key] = cur
+    return True, None
+
+
 def plan_view(l):
     """计划概览：总题数 / 每天题数 / 剩余天数 / 起止日期
 
@@ -622,6 +718,7 @@ def state_view(p):
                 "poolLeft": 0, "daily": {}, "dailyDetail": {}, "tasks": [],
                 "categories": [], "lists": [], "activeList": "",
                 "stats": stats_view({"categories": [], "pool": [], "done": [], "board": []}),
+                "marks": [], "markStats": marks_stats([]),
                 "weekly": weekly_view({"done": []}),
                 "reminders": {"enabled": False, "slots": []},
                 "canUndo": can_undo()}
@@ -661,6 +758,8 @@ def state_view(p):
         "plan": plan_view(l),
         "setupDone": bool(p.get("setupDone")),
         "stats": stats_view(l),
+        "marks": marks_view(l),
+        "markStats": marks_stats(marks_view(l)),
         "weekly": weekly_view(l),
         "reminders": {"enabled": bool(r.get("enabled")), "slots": r.get("slots", [])},
         "canUndo": can_undo(),
@@ -982,12 +1081,15 @@ def auto_settle(l):
       计划排满、没有下一天时停下来，留给用户手动处理
 
     日期驱动，不依赖某个时刻服务必须活着：停机几天后再启动会一次性补齐。
-    返回 (自动提交的天数, 入库题数, 自动展开的天数)。
+    返回 dict：{settled 结算天数, added 入库题数, carried 顺延题数,
+                expanded 展开天数, dates 结算掉的日期(升序)}
     """
     if l.get("paused"):
-        return 0, 0, 0
+        return {"settled": 0, "added": 0, "carried": 0,
+                "expanded": 0, "dates": []}
     today = datetime.date.today().isoformat()
-    settled = added = expanded = 0
+    settled = added = carried = expanded = 0
+    dates = []
 
     # 第一步：把所有「已经过去、还没提交」的天按日期顺序结算掉。
     # 原来只处理最后一个普通天（last_n），关机几天后再开会发现前几天
@@ -1007,9 +1109,11 @@ def auto_settle(l):
         if target is None:
             break
         b = board[target]
-        a, _c, _r, _e = do_submit(l, target, rec_date=b.get("date"))
+        a, c, _r, _e = do_submit(l, target, rec_date=b.get("date"))
         settled += 1
         added += a
+        carried += c
+        dates.append(b.get("date"))
 
     # 第二步：还没追上今天就继续展开，直到今天（或计划排满）
     for _ in range(500):
@@ -1028,7 +1132,34 @@ def auto_settle(l):
         if not do_expand(l):
             break                            # 计划排满，没有下一天：不硬动
         expanded += 1
-    return settled, added, expanded
+    return {"settled": settled, "added": added, "carried": carried,
+            "expanded": expanded, "dates": dates}
+
+
+def settle_msg(info):
+    """把auto_settle 的结果拼成一句人话，给系统通知 / 启动提示用。"""
+    n = info.get("settled", 0)
+    added = info.get("added", 0)
+    carried = info.get("carried", 0)
+    dates = info.get("dates") or []
+    if n <= 0:
+        return "题板已自动切换到今天"
+    if n == 1 and dates:
+        try:
+            _, m, d = dates[0].split("-")
+            head = "已自动提交 %d 月 %d 日" % (int(m), int(d))
+        except Exception:
+            head = "已自动提交 1 天"
+    else:
+        head = "已自动结算 %d 天" % n
+    parts = [head]
+    if added:
+        parts.append("%d 题入库" % added)
+    if carried:
+        parts.append("%d 题顺延到今天" % carried)
+    if not added and not carried:
+        parts.append("当天没做，题已顺延")
+    return "，".join(parts)
 
 
 def do_reset_day(l, di):
@@ -1627,11 +1758,10 @@ def reminder_worker():
                 l0 = get_list(p)
                 if l0 is not None:
                     push_history(p)
-                    sd, sa, se = auto_settle(l0)
-                    if sd or se:
+                    info = auto_settle(l0)
+                    if info["settled"] or info["expanded"]:
                         save_plan(p)
-                        note = ("已自动结算 %d 天（入库 %d 题，没做的已顺延）" % (sd, sa)) if sd \
-                            else "已自动切换到今天的题板"
+                        note = settle_msg(info)
                     else:
                         _history.pop()   # 没动数据就不留撤销点
                 r = ensure_reminders(p)
@@ -2004,6 +2134,16 @@ class Handler(BaseHTTPRequestHandler):
                     _history.pop()
                 save_plan(p)
                 self._json({"ok": ok, "err": err, "state": state_view(p)})
+            elif path.startswith("/api/mark"):
+                # 标记经典 / 错题；kind 传空字符串表示取消标记
+                note = data.get("note")
+                ok, err = do_mark(l, data.get("id"),
+                                  data.get("kind") or None,
+                                  note if note is not None else None)
+                if not ok:
+                    _history.pop()
+                save_plan(p)
+                self._json({"ok": ok, "err": err, "state": state_view(p)})
             elif path.startswith("/api/swap"):
                 ok, err = do_swap(p, l, di, ti)
                 if not ok:
@@ -2073,20 +2213,16 @@ def main():
             ensure_board(l)
             # 启动即补结算：停机几天后再打开，把欠的天一次性结清、切到今天
             push_history(p)
-            sd, sa, se = auto_settle(l)
-            if sd or se:
+            info = auto_settle(l)
+            if info["settled"] or info["expanded"]:
                 save_plan(p)
-                settled = (sd, sa, se)
-                print("auto-settle: %d day(s) submitted (%d problem(s)), "
-                      "%d day(s) expanded" % (sd, sa, se), flush=True)
+                settled = info
+                print("auto-settle: %s" % settle_msg(info), flush=True)
             else:
                 _history.pop()
         save_plan(p)
     if settled:
-        sd, sa, se = settled
-        msg = ("已自动结算 %d 天（入库 %d 题，没做的已顺延）" % (sd, sa)) if sd \
-            else "已自动切换到今天的题板"
-        send_toast("看板 · 自动结算", msg)
+        send_toast("看板 · 自动结算", settle_msg(settled))
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:

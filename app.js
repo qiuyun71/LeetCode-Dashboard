@@ -13,6 +13,10 @@ const CHECK='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke=
 const ICO_SWAP='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h11l-3-3"/><path d="M20 15H9l3 3"/></svg>';
 /* 之前做过：书签/对勾标记（用旗子避免与勾选框对号混淆） */
 const ICO_PRE='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4"/><path d="M6 4h11l-2.5 4L17 12H6"/></svg>';
+/* 错题本：空心星（未标记）/ 实心星（已标记经典）/ 实心心形（错题） */
+const ICO_STAR_O='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.8l1-6L3.3 9.6l6-.9z"/></svg>';
+const ICO_STAR='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3.2l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.8l1-6L3.3 9.6l6-.9z"/></svg>';
+const ICO_STAR_F='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6"><path d="M12 20.7s-7.6-4.6-9.2-9.1c-1-2.8.5-5.7 3.2-6.4 2-.5 4 .3 5 1.7 1-1.4 3-2.2 5-1.7 2.7.7 4.2 3.6 3.2 6.4-1.6 4.5-9.2 9.1-9.2 9.1z"/></svg>';
 
 /* 背景氛围：细雨（慢但看得见）+ 竹叶慢慢打转 */
 (function(){
@@ -103,11 +107,153 @@ async function post(url,body){
     body:JSON.stringify(body||{})})).json();
 }
 
+/* ============ 错题本 / 经典题 ============ */
+var MARK_FILTER='all';
+
+function markOf(pid){
+  var ms=(STATE&&STATE.marks)||[];
+  for(var i=0;i<ms.length;i++){ if(ms[i].id===pid) return ms[i]; }
+  return null;
+}
+
+function markLabel(pid){
+  var m=markOf(pid);
+  return m?m.kindLabel:'';
+}
+
+/* 题板行尾的标记按钮：已标记的显示彩色实心，未标记显示空心 */
+function markBtn(pid){
+  var m=markOf(pid);
+  var cls='icobtn mkbtn'+(m?(m.kind==='wrong'?' on wrong':' on classic'):'');
+  var tip=m?('已标记「'+m.kindLabel+'」· 点击取消'):'标记为经典 / 错题';
+  return '<button class="'+cls+'" data-mark="'+pid+'" data-tip="'+esc(tip)+'">'+
+    (m?(m.kind==='wrong'?ICO_STAR_F:ICO_STAR):ICO_STAR_O)+'</button>';
+}
+
+async function toggleMark(pid,kind){
+  var r=await post('/api/mark',{id:pid,kind:kind});
+  if(r&&r.state){
+    STATE=r.state;
+    load();
+    renderPanelBody();
+    toast(kind?('已标记为「'+({classic:'经典',wrong:'错题'})[kind]+'」'):'已取消标记');
+  }
+}
+
+function renderMarks(s){
+  var ms=s.marks||[], st=s.markStats||{};
+  if(!ms.length){
+    return '<div class="emptyhint" style="padding:26px 4px">'+
+      '<div style="font-size:15px;font-weight:800;margin-bottom:8px">错题本还是空的</div>'+
+      '<div style="font-size:12.5px;line-height:1.9;color:var(--ink-2)">'+
+      '在题板上点每道题行尾的 <b>☆</b> 按钮，就能标记成<br>'+
+      '<b>经典</b>（值得回看的好题）或 <b>错题</b>（做错、想再练的）。<br>'+
+      '标记过的题会汇总到这里，并统计难度与考点分布。</div></div>';
+  }
+  var h='';
+  h+='<div class="mkstats">'+
+     '<div class="mkstat"><div class="v">'+st.total+'</div><div class="k">标记总数</div></div>'+
+     '<div class="mkstat w"><div class="v">'+st.wrong+'</div><div class="k">错题</div></div>'+
+     '<div class="mkstat c"><div class="v">'+st.classic+'</div><div class="k">经典</div></div>'+
+     '<div class="mkstat"><div class="v">'+st.solved+'</div><div class="k">已做出来</div></div>'+
+     '</div>';
+
+  var bd=st.byDiff||{};
+  h+='<div class="mkbar">'+
+     '<span class="lb">难度</span>'+
+     '<span class="seg"><i style="background:#5EEAD4"></i>简单 '+bd.easy+'</span>'+
+     '<span class="seg"><i style="background:#FBBF6E"></i>中等 '+bd.medium+'</span>'+
+     '<span class="seg"><i style="background:#FB8A8A"></i>困难 '+bd.hard+'</span>';
+  if((st.topCat||[]).length){
+    h+='<span class="lb" style="margin-left:14px">高频考点</span>'+
+       st.topCat.slice(0,4).map(function(c){
+         return '<span class="seg plain">'+esc(c.name)+' '+c.n+'</span>';}).join('');
+  }
+  h+='</div>';
+
+  h+='<div class="mktabs">'+
+     ['all','wrong','classic'].map(function(k){
+       var n=k==='all'?st.total:(k==='wrong'?st.wrong:st.classic);
+       return '<button class="mkt'+(MARK_FILTER===k?' on':'')+'" onclick="mkFilter(\''+k+'\')">'+
+         ({all:'全部',wrong:'错题',classic:'经典'})[k]+' '+n+'</button>';}).join('')+
+     '</div>';
+
+  var list=ms.filter(function(m){
+    return MARK_FILTER==='all'||m.kind===MARK_FILTER;});
+  if(!list.length){
+    h+='<div class="fhelp" style="padding:18px 0">这个分类下还没有题。</div>';
+    return h;
+  }
+  h+='<div class="mklist">'+list.map(function(m){
+    var dcls=m.difficulty==='hard'?'d hard':(m.difficulty==='medium'?'d med':'d easy');
+    return '<div class="mkitem" data-id="'+m.id+'">'+
+      '<span class="mkkind '+(m.kind==='wrong'?'w':'c')+'">'+
+        (m.kind==='wrong'?'错题':'经典')+'</span>'+
+      '<div class="mkmain">'+
+        '<div class="mktitle"><b>#'+m.id+'</b> '+esc(m.name)+
+          '<span class="'+dcls+'">'+({easy:'简单',medium:'中等',hard:'困难'})[m.difficulty]+'</span>'+
+          (m.category?'<span class="mkcat">'+esc(m.category)+'</span>':'')+
+          (m.done?'<span class="mkok">已做出来</span>':'')+
+        '</div>'+
+        '<input class="mknote" placeholder="加一句备注：卡在哪、下次注意什么" value="'+esc(m.note||'')+'" '+
+          'onchange="saveMarkNote('+m.id+',this.value)">'+
+      '</div>'+
+      '<button class="mkdel" data-tip="取消标记" onclick="toggleMark('+m.id+',\'\')">×</button>'+
+    '</div>';}).join('')+'</div>';
+  return h;
+}
+
+function mkFilter(k){
+  MARK_FILTER=k;
+  renderPanelBody();
+}
+
+/* 题板上点☆：弹一个小选择（经典 / 错题 / 取消） */
+var MKPICK=null;
+function askMark(pid){
+  var m=markOf(pid);
+  var cur=m?m.kind:'';
+  var tip=document.getElementById('mkpickTip');
+  if(tip)tip.textContent='题目 #'+pid;
+  var box=document.getElementById('mkpick');
+  if(box){
+    box.dataset.id=pid;
+    box.querySelectorAll('[data-kind]').forEach(function(b){
+      b.classList.toggle('on',b.dataset.kind===cur);});
+    box.querySelector('[data-kind=""]').style.display=cur?'':'none';
+  }
+  var m2=document.getElementById('mkpickMask');
+  if(m2)m2.classList.add('show');
+}
+function closeMarkPick(){
+  var m=document.getElementById('mkpickMask');
+  if(m)m.classList.remove('show');
+}
+
+async function saveMarkNote(pid,val){
+  var m=markOf(pid); if(!m)return;
+  var r=await post('/api/mark',{id:pid,kind:m.kind,note:val});
+  if(r&&r.state)STATE=r.state;
+  toast('备注已保存');
+}
+
+/* 面板内容重绘（错题本在弹窗内切分类/改备注时用） */
+function renderPanelBody(){
+  if(MODAL!=='marks'||!STATE)return;
+  var body=document.getElementById('mBody');
+  if(body)body.innerHTML=renderMarks(STATE);
+}
+
 /* ---------- 左侧：统计 ---------- */
 function renderStats(s){
   var doneN=s.doneCount, tgt=s.target;
   document.getElementById('sDone').textContent=doneN;
   document.getElementById('sLeft').textContent=Math.max(0,tgt-doneN);
+  var mk=document.getElementById('navMk');
+  if(mk){
+    var st=s.markStats||{};
+    mk.textContent=st.total?(st.wrong+' 错 / '+st.classic+' 经典'):'0';
+  }
   var sp=document.getElementById('sPre');
   if(sp)sp.textContent=s.preCount||0;
   var cand=s.candLeft||0;
@@ -607,7 +753,8 @@ function dayHTML(day, di, s, isCur){
       (t.carry?'<span class="tag">补做</span>':'')+
       '<span class="pill" style="background:'+grad+'">'+label+'</span>'+
       '<button class="icobtn swap" data-di="'+di+'" data-ti="'+ti+'" data-tip="换一道题（不影响统计）">'+ICO_SWAP+'</button>'+
-      '<button class="icobtn mark" data-di="'+di+'" data-ti="'+ti+'" data-tip="之前做过<br>计入已完成，不计入每日量">'+ICO_PRE+'</button></div>';
+      '<button class="icobtn mark" data-di="'+di+'" data-ti="'+ti+'" data-tip="之前做过<br>计入已完成，不计入每日量">'+ICO_PRE+'</button>'+
+      markBtn(t.id)+'</div>';
   });
 
   if(fin){
@@ -656,6 +803,9 @@ function bindDay(box){
   });
   box.querySelectorAll('.mark').forEach(function(el){
     el.onclick=function(e){e.stopPropagation();markPre(+el.dataset.di,+el.dataset.ti);};
+  });
+  box.querySelectorAll('.mkbtn').forEach(function(el){
+    el.onclick=function(e){e.stopPropagation();askMark(+el.dataset.mark);};
   });
   box.querySelectorAll('.addone:not(.reset)').forEach(function(el){
     el.onclick=function(e){e.stopPropagation();addOne(+el.dataset.di);};
@@ -752,6 +902,10 @@ function openPanel(kind){
     body.appendChild(h);
     take('dockWeekly');
     renderWeekly(s);
+  }else if(kind==='marks'){
+    title.innerHTML='错题本<span class="msub">'+esc(s.activeName||'')+'</span>';
+    modal.classList.add('wide');
+    body.innerHTML=renderMarks(s);
   }else if(kind==='remind'){
     title.innerHTML='每日提醒<span class="msub">到点弹 Windows 通知</span>';
     take('dockRemind');

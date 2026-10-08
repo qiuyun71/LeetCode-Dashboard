@@ -473,6 +473,12 @@
           border:1.5px solid var(--line);background:var(--card);color:var(--ink-3);
           display:flex;align-items:center;justify-content:center;transition:.2s;
           font-family:inherit;}
+  /* 错题本标记按钮：空心=未标记，实心琥珀=经典，实心粉=错题 */
+  .icobtn.mkbtn:hover{border-color:#C4B5FD;color:var(--iris-d);background:#F8F6FF;
+                      transform:translateY(-1px);box-shadow:0 3px 10px var(--glow-p);}
+  .icobtn.mkbtn.on{border-color:transparent;}
+  .icobtn.mkbtn.on.classic{background:#FEF3E2;color:#B45309;}
+  .icobtn.mkbtn.on.wrong{background:#FDE8EC;color:#BE123C;}
   .icobtn.swap:hover{border-color:var(--sky);color:var(--sky-d);background:#F2F9FF;
                      transform:translateY(-1px);box-shadow:0 3px 10px var(--glow-v);}
   .icobtn.mark:hover{border-color:var(--mint-d);color:#0F766E;background:#F0FDF9;
@@ -774,6 +780,84 @@
   .toast.show{opacity:1;transform:translate(-50%,0);}
   @media(max-width:900px){.app{flex-direction:column}
     .side{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}}
+
+  /* ============ 错题本 ============ */
+  .mkstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .mkstat{background:var(--card);border:1.5px solid var(--line);border-radius:13px;
+          padding:12px 10px;text-align:center;}
+  .mkstat .v{font-size:21px;font-weight:800;color:var(--iris-d);line-height:1.2;}
+  .mkstat.w .v{color:#BE123C;}
+  .mkstat.c .v{color:#B45309;}
+  .mkstat .k{font-size:11px;color:var(--ink-3);margin-top:3px;font-weight:700;}
+
+  .mkbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;
+         font-size:11.5px;color:var(--ink-3);}
+  .mkbar .lb{font-weight:800;color:var(--ink-2);}
+  .mkbar .seg{display:inline-flex;align-items:center;gap:5px;background:var(--card);
+              border:1.5px solid var(--line);border-radius:99px;padding:4px 10px;
+              font-weight:700;color:var(--ink-2);}
+  .mkbar .seg i{width:8px;height:8px;border-radius:99px;display:inline-block;}
+  .mkbar .seg.plain{background:#F7F5FC;}
+
+  .mktabs{display:flex;gap:8px;margin-bottom:12px;}
+  .mkt{flex:1;padding:9px 10px;border:1.5px solid var(--line);border-radius:11px;
+       background:var(--card);font-size:12.5px;font-weight:800;color:var(--ink-2);
+       cursor:pointer;transition:.2s;font-family:inherit;}
+  .mkt:hover{border-color:var(--iris-l);color:var(--iris-d);background:#F8F6FF;}
+  .mkt.on{border-color:transparent;color:#fff;
+          background:linear-gradient(100deg,var(--iris-d),var(--violet-d));
+          box-shadow:0 4px 14px var(--glow-p);}
+
+  .mklist{display:flex;flex-direction:column;gap:9px;}
+  .mkitem{display:flex;align-items:flex-start;gap:11px;padding:12px 13px;
+          background:var(--card);border:1.5px solid var(--line);border-radius:13px;
+          transition:.2s;}
+  .mkitem:hover{border-color:var(--iris-l);box-shadow:0 4px 14px var(--glow-p);}
+  .mkkind{flex:none;padding:4px 9px;border-radius:99px;font-size:10.5px;font-weight:800;}
+  .mkkind.c{background:#FEF3E2;color:#B45309;}
+  .mkkind.w{background:#FDE8EC;color:#BE123C;}
+  .mkmain{flex:1;min-width:0;}
+  .mktitle{font-size:13px;font-weight:700;color:var(--ink);line-height:1.6;}
+  .mktitle b{color:var(--iris-d);margin-right:2px;}
+  .mktitle .d{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;
+              font-weight:800;margin-left:6px;vertical-align:1px;}
+  .mktitle .d.easy{background:#F0FDF9;color:#0F766E;}
+  .mktitle .d.med{background:#FFFBEB;color:#B45309;}
+  .mktitle .d.hard{background:#FEF2F2;color:#BE123C;}
+  .mktitle .mkcat{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;
+                   font-weight:700;background:#F3F0FA;color:var(--ink-3);margin-left:5px;}
+  .mktitle .mkok{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;
+                 font-weight:800;background:#EEF6FF;color:#1D4ED8;margin-left:5px;}
+  .mknote{width:100%;margin-top:7px;padding:7px 10px;border:1.5px solid var(--line);
+          border-radius:9px;font-size:12px;font-family:inherit;color:var(--ink);
+          background:#FCFBFF;transition:.2s;}
+  .mknote:focus{outline:none;border-color:var(--iris-l);background:#fff;
+                box-shadow:0 0 0 3px var(--glow-p);}
+  .mkdel{flex:none;width:24px;height:24px;border-radius:8px;border:1.5px solid var(--line);
+         background:var(--card);color:var(--ink-3);cursor:pointer;font-size:15px;line-height:1;
+         transition:.2s;font-family:inherit;}
+  .mkdel:hover{border-color:#F4A6B8;color:#BE123C;background:#FEF2F4;}
+
+  /* 标记选择小弹层 */
+  .mkpick-mask{position:fixed;inset:0;background:rgba(30,25,55,.32);backdrop-filter:blur(3px);
+               display:none;align-items:center;justify-content:center;z-index:60;}
+  .mkpick-mask.show{display:flex;}
+  .mkpick{background:#fff;border-radius:17px;padding:20px 22px;width:290px;
+         box-shadow:0 24px 60px rgba(40,30,90,.28);text-align:center;}
+  .mkpick .tip{font-size:12px;font-weight:800;color:var(--ink-3);margin-bottom:13px;}
+  .mkpick .opts{display:flex;flex-direction:column;gap:9px;}
+  .mkpick .opts button{display:flex;align-items:center;gap:9px;padding:11px 14px;
+                      border:1.5px solid var(--line);border-radius:12px;background:var(--card);
+                      font-size:13px;font-weight:800;color:var(--ink);cursor:pointer;
+                      transition:.2s;font-family:inherit;}
+  .mkpick .opts button:hover{border-color:var(--iris-l);background:#F8F6FF;}
+  .mkpick .opts button.on{border-color:transparent;color:#fff;
+                           background:linear-gradient(100deg,var(--iris-d),var(--violet-d));}
+  .mkpick .opts button.wrong.on{background:linear-gradient(100deg,#BE123C,#E11D48);}
+  .mkpick .opts button.classic.on{background:linear-gradient(100deg,#B45309,#D97706);}
+  .mkpick .cancel{margin-top:11px;font-size:12px;color:var(--ink-3);cursor:pointer;
+                  background:none;border:none;font-family:inherit;}
+  .mkpick .cancel:hover{color:var(--ink);text-decoration:underline;}
 </style>
 </head>
 <body>
@@ -813,6 +897,11 @@
 
     <h2 style="margin-top:18px">更多</h2>
     <div class="navlist">
+      <button class="navitem" onclick="openPanel('marks')">
+        <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 5.9 6.6.9-4.8 4.6 1.2 6.5L12 17.3 6.1 20.4l1.2-6.5L2.5 9.3l6.6-.9z"/></svg></span>
+        <span class="ntx">错题本</span>
+        <span class="nav-badge" id="navMk">0</span>
+      </button>
       <button class="navitem" onclick="openPanel('stats')">
         <span class="nic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M7 21V11"/><path d="M12 21V4"/><path d="M17 21v-7"/></svg></span>
         <span class="ntx">学习统计</span>
@@ -881,6 +970,27 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 标记选择：经典 / 错题 -->
+<div class="mkpick-mask" id="mkpickMask" onclick="if(event.target===this)closeMarkPick()">
+  <div class="mkpick" id="mkpick">
+    <div class="tip" id="mkpickTip">选择标记</div>
+    <div class="opts">
+      <button class="classic" data-kind="classic" onclick="closeMarkPick();toggleMark(+document.getElementById('mkpick').dataset.id,'classic')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.2l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.8l1-6L3.3 9.6l6-.9z"/></svg>
+        经典 · 值得回看的好题
+      </button>
+      <button class="wrong" data-kind="wrong" onclick="closeMarkPick();toggleMark(+document.getElementById('mkpick').dataset.id,'wrong')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.7s-7.6-4.6-9.2-9.1c-1-2.8.5-5.7 3.2-6.4 2-.5 4 .3 5 1.7 1-1.4 3-2.2 5-1.7 2.7.7 4.2 3.6 3.2 6.4-1.6 4.5-9.2 9.1-9.2 9.1z"/></svg>
+        错题 · 做错想再练
+      </button>
+      <button data-kind="" onclick="closeMarkPick();toggleMark(+document.getElementById('mkpick').dataset.id,'')">
+        取消标记
+      </button>
+    </div>
+    <button class="cancel" onclick="closeMarkPick()">关闭</button>
+  </div>
+</div>
 <div class="tip" id="tip"></div>
 <div class="pop" id="listPop"></div>
 

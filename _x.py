@@ -142,8 +142,7 @@ try:
         inboard = pg.eval_on_selector_all(
             ".day .dayacts .tbtn", "els => els.map(e=>e.textContent.trim())")
         print("   题板内按钮:", inboard)
-        assert len(inboard) == 2, "题板里应有 2 个按钮（展开/撤销）"
-        assert any("展开" in x for x in inboard) and any("撤销" in x for x in inboard)
+        assert inboard == ["↶ 撤销"], "题板里只应有「撤销」（展开下一天已移除，交给服务端跨天自动切）"
         toolbar = pg.eval_on_selector_all(".toolbar", "els => els.length")
         print("   顶部 toolbar 数量:", toolbar, "(应为 0，已移除)")
         assert toolbar == 0, "顶部工具栏应已移除"

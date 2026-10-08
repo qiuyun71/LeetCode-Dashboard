@@ -781,11 +781,12 @@ function dayHTML(day, di, s, isCur){
     (fin?'已完成':'确定完成')+
     (fin?'':'<span class="swq" data-tip="'+qtip+'">?</span>')+'</button>';
   var tip='';
-  // 展开 / 撤销只在「当天题板」里出现，历史记录里不重复渲染
+  // 当前天只留「撤销」。展开下一天交给服务端跨天自动做：
+  //手动展开会让「明天的题板」在今天就能提交，记录算到哪天变得很别扭；
+  // 想今天多做几道，用题板上的「+ 加一题」就够了。
   var acts='';
   if(isCur){
     acts='<div class="dayacts">'+
-      '<button class="tbtn" id="addBtn" onclick="expand()">+ 展开下一天</button>'+
       '<button class="tbtn" id="undoBtn" onclick="undo()" data-tip="撤销上一步操作">↶ 撤销</button>'+
       '</div>';
   }
@@ -1059,19 +1060,96 @@ async function addOne(di){
 }
 async function submit(di){
   var j=await post('/api/submit',{day:di});
-  if(j.carried>0){
-    var msg='已记录 '+j.added+' 题，'+j.carried+' 题顺延到第二天补做';
-    if(j.extra>0){msg+='，'+j.extra+' 题挪到末尾补做日';}
-    toast(msg);
-  }
-  else if(j.added===0){toast('还没勾选任何题');return;}
-  else{toast('完成！已记录 '+j.added+' 题');}
+  if(j.added===0&&j.carried===0){toast('还没勾选任何题');return;}
   load();
+  showSettle(j);
 }
+
+/* ============ 结算页 ============
+   提交后弹出来的那一屏：这次做完了什么、难度分布、以及记录记到哪一天。 */
+function showSettle(j){
+  var picked=j.picked||[], n=picked.length;
+  var diff={'easy':0,'medium':0,'hard':0};
+  picked.forEach(function(t){ var k=t.difficulty||'easy'; if(diff[k]!==undefined)diff[k]++; });
+  var DN={easy:'简单',medium:'中等',hard:'困难'};
+
+  // 记录日期：默认记到今天；如果是提前做明天的题，明确说明
+  var sameDay=(!j.planDate||j.planDate===j.recDate);
+  var head=n===0?'今天没做新题':(n===1?'完成 1 道题':'完成 '+n+' 道题');
+  var sub;
+  if(n===0){
+    sub='勾的题都已经在记录里了，去看看别的吧';
+  }else if(sameDay){
+    sub='记录到 '+md(j.recDate)+'，已计入完成与日历';
+  }else{
+    sub='本该是 '+md(j.planDate)+' 的题，做于 '+md(j.recDate)+'，<b>计入今天</b>的完成量与日历';
+  }
+
+  var h='';
+  h+='<div class="settle">'+
+    '<div class="shead"><div class="stitle">'+head+'</div>'+
+    '<div class="ssub">'+sub+'</div></div>';
+
+  if(n>0){
+    h+='<div class="sdiff">'+
+      ['easy','medium','hard'].map(function(k){
+        if(!diff[k])return '';
+        return '<span class="sd"><i style="background:'+
+          ({easy:'#5EEAD4',medium:'#FBBF6E',hard:'#FB8A8A'})[k]+'"></i>'+
+          DN[k]+' '+diff[k]+'</span>';}).join('')+
+      '</div>';
+    h+='<div class="slist">'+picked.map(function(t){
+      return '<div class="srow"><span class="snum">#'+t.id+'</span>'+
+        '<span class="snm">'+esc(t.name)+'</span>'+
+        (t.category?'<span class="scat">'+esc(t.category)+'</span>':'')+
+        '<span class="sdg '+(t.difficulty||'easy')+'">'+DN[t.difficulty||'easy']+'</span></div>';
+    }).join('')+'</div>';
+  }
+
+  // 顺延/ 补做情况
+  var tail=[];
+  if(j.carried>0)tail.push(j.carried+' 题没勾，已顺延到'+(j.extra>0?'补做日':'第二天'));
+  if(j.extra>0)tail.push(j.extra+' 题超出上限，挪到计划末尾的补做日');
+  if(tail.length){
+    h+='<div class="scar">'+tail.map(esc).join(' · ')+'</div>';
+  }
+
+  // 累计进度
+  var st=STATE&&STATE.stats?STATE.stats:{};
+  h+='<div class="sstat">'+
+     '<div><b>'+(j.state?j.state.doneCount:'-')+'</b> 题已完成</div>'+
+     '<div><b>'+(j.state?Math.max(0,j.state.target-(j.state?j.state.doneCount:0)):'-')+'</b> 题待做</div>'+
+     '</div>';
+
+  h+='<div class="sbtns">'+
+     '<button class="sbtn ghost" onclick="closeSettle()">留在这儿</button>'+
+     '<button class="sbtn primary" onclick="settleNext()">继续做题 →</button>'+
+     '</div></div>';
+
+  var m=document.getElementById('settleMask');
+  var box=document.getElementById('settleBox');
+  if(box)box.innerHTML=h;
+  if(m)m.classList.add('show');
+}
+
+function closeSettle(){
+  var m=document.getElementById('settleMask');
+  if(m)m.classList.remove('show');
+}
+
+/* 「继续做题」：关掉结算页并把视口带回题板 */
+function settleNext(){
+  closeSettle();
+  var b=document.getElementById('board');
+  if(b&&b.scrollIntoView)b.scrollIntoView({behavior:'smooth',block:'center'});
+  var mk=document.querySelector('.submit:not([disabled])');
+  if(mk)setTimeout(function(){mk.focus();},260);
+}
+
 async function expand(){
   var j=await post('/api/expand');
   if(!j.ok){toast('已经展开到最后一天了');return;}
-  toast('已展开下一天');load();
+  toast('已展开下一天 · 可以提前做');load();
 }
 async function resetDay(di){
   if(!confirm('把这一天恢复成当天的原始题目？\n\n勾选、换题、加题都会还原；顺延（补做）进来的题会保留。\n\n确定继续吗？'))return;

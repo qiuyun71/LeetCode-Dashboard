@@ -2158,10 +2158,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": n > 0, "added": n, "err": err,
                             "state": state_view(p)})
             elif path.startswith("/api/submit"):
+                # 先记下这次勾了哪些题（do_submit 会清空当天 tasks，之后就取不到了）
+                _bd = l.get("board", [])
+                _day = _bd[di] if 0 <= di < len(_bd) else {}
+                picked = [{"id": t.get("id"), "name": t.get("name") or "",
+                           "difficulty": t.get("difficulty") or "easy",
+                           "category": t.get("category") or ""}
+                          for t in (_day.get("tasks") or []) if t.get("checked")]
+                plan_date = _day.get("date") or ""
                 added, carried, remain, extra_n = do_submit(l, di)
                 save_plan(p)
                 self._json({"ok": True, "added": added, "carried": carried,
-                            "remain": remain, "extra": extra_n, "state": state_view(p)})
+                            "remain": remain, "extra": extra_n,
+                            "picked": picked, "planDate": plan_date,
+                            "recDate": datetime.date.today().isoformat(),
+                            "state": state_view(p)})
             elif path.startswith("/api/resetday"):
                 ok = do_reset_day(l, di)
                 save_plan(p)

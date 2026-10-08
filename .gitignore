@@ -21,3 +21,4 @@ board.log
 .DS_Store
 Thumbs.db
 _eq_old.json
+.backup-plan-*.json

@@ -971,6 +971,19 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- 后端未重启时的横幅提示 -->
+<div id="backendWarn" style="display:none;position:fixed;left:50%;transform:translateX(-50%);
+     top:14px;z-index:70;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;
+     background:#FFF7ED;border:1.5px solid #FDBA74;color:#9A3412;font-size:12.5px;
+     font-weight:700;box-shadow:0 8px 26px rgba(154,52,18,.18);max-width:88vw">
+  <span style="flex:none">⚠️</span>
+  <span>后端还是旧版本，<b>新功能用不了</b>（比如点星星没反应）。关掉看板服务后重新双击
+    <b>打开看板.bat</b> 即可。</span>
+  <button onclick="this.parentNode.style.display='none'"
+          style="flex:none;border:none;background:none;cursor:pointer;color:#9A3412;
+                 font-size:15px;line-height:1;padding:0 2px;font-family:inherit">×</button>
+</div>
+
 <!-- 标记选择：经典 / 错题 -->
 <div class="mkpick-mask" id="mkpickMask" onclick="if(event.target===this)closeMarkPick()">
   <div class="mkpick" id="mkpick">

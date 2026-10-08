@@ -962,6 +962,14 @@ document.addEventListener('keydown',function(e){
 /* 界面版本检测：改了 ui.html / app.js 之后，页面自己提示并刷新，
    免得开着旧页面以为改动没生效。 */
 function checkBuild(s){
+  /* 后端能力自检：ui.html / app.js 每次请求都重读磁盘（改了刷新就有），
+     但 server.py 是**进程启动时加载**的——改了后端不重启，接口就不存在，
+     表现是「按钮出现了、点了没反应」。这里主动识别并提示重启。 */
+  if(s && s.marks===undefined){
+    var box=document.getElementById('backendWarn');
+    if(box)box.style.display='flex';
+    return;                       // 后端还是旧的，后面的版本号对比没意义
+  }
   var b=s&&s.build;
   if(!b)return;
   var old=null;

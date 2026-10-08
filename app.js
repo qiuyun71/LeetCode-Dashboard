@@ -334,10 +334,13 @@ function renderTrophy(s){
 function openTrophy(){
   var btn=document.getElementById('trophyBtn');
   if(btn){
-    btn.classList.remove('pop');void btn.offsetWidth;btn.classList.add('pop');
+    /* 类名用 tbpop：项目里 .pop 是题单下拉菜单（min-width:158px），
+       撞名会把奖杯按钮撑成长椭圆 */
+    btn.classList.remove('tbpop');void btn.offsetWidth;btn.classList.add('tbpop');
     trophySparks(btn);
   }
   ACH_VIEW.open=null;
+  ACH_VIEW.cat='all';   // 重开重置分类，别留着上次的筛选
   renderAchList();
   document.getElementById('achMask').classList.add('show');
 }
@@ -453,7 +456,7 @@ function openAchDetail(id){
     (a.id==='e3'||a.id==='x1'
       ?'<button class="ad-btn" onclick="calFlash();closeTrophy()">去日历看看</button>'
       :'')+
-    '<button class="ad-btn primary" onclick="closeTrophy()">'+(x.ok?'太棒了':'知道了')+'</button></div>'+
+    '<button class="ad-btn primary" onclick="renderAchList()">'+(x.ok?'太棒了':'知道了')+'</button></div>'+
     '</div>';
   document.getElementById('achBox').innerHTML=h;
   ACH_VIEW.open=id;

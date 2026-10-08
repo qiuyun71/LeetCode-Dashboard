@@ -596,6 +596,45 @@ def daily_detail(l):
     return d
 
 
+def cross_plan_record(p):
+    """跨所有题单（含各自历史轮次归档）的单日完成纪录
+
+    「所有计划里完成最多题的那一天」：遍历 lists 下每个题单当前的 done
+    记录和 rounds 归档（重新开轮时存的一份 {id, date, pre}），按日期聚合
+    真正做完的新题，取题数最多的一天；并列取更早的日期——纪录属于
+    第一次达成它的那天。返回 {date, count, list}，没有记录时 count=0。
+
+    归档轮次只记了 pre、没记 swapped，所以旧轮次里「换题补记」那几道会被
+    算进来；那是历史遗留数据、量极小，接受。
+    """
+    best = {"date": "", "count": 0, "list": ""}
+
+    def feed(counts, lname):
+        for dt, n in counts.items():
+            if not dt or n <= 0:
+                continue
+            if n > best["count"] or (n == best["count"] and dt < best["date"]):
+                best["date"], best["count"], best["list"] = dt, n, lname
+
+    for k, l in sorted((p.get("lists") or {}).items()):
+        if not isinstance(l, dict):
+            continue
+        lname = l.get("name") or k
+        feed(daily_counts(l), lname)
+        for r in (l.get("rounds") or []):
+            if not isinstance(r, dict):
+                continue
+            c = {}
+            for d in (r.get("done") or []):
+                if d.get("pre"):
+                    continue
+                dt = d.get("date")
+                if dt:
+                    c[dt] = c.get(dt, 0) + 1
+            feed(c, "%s · 第 %s 轮" % (lname, r.get("no") or "?"))
+    return best
+
+
 # ============ 统计 ============
 
 def stats_view(l):
@@ -720,6 +759,7 @@ def state_view(p):
                 "stats": stats_view({"categories": [], "pool": [], "done": [], "board": []}),
                 "marks": [], "markStats": marks_stats([]),
                 "weekly": weekly_view({"done": []}),
+                "recAll": cross_plan_record(p),
                 "reminders": {"enabled": False, "slots": []},
                 "canUndo": can_undo()}
     dl = done_list(l)
@@ -749,6 +789,7 @@ def state_view(p):
         "candSrc": _csrc,
         "daily": daily_counts(l),
         "dailyDetail": daily_detail(l),
+        "recAll": cross_plan_record(p),
         "tasks": all_tasks(l),
         "categories": categories_view(l),
         "lists": lists_view(p),

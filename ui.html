@@ -1072,6 +1072,16 @@
        background:var(--tint,#F5F3FF);border:1.5px solid var(--bd,#DDD8FF);}
   .ad-desc{font-size:13px;color:var(--ink-2);font-weight:600;line-height:1.8;margin:14px auto 0;
        max-width:420px;}
+  /* 记录型成就（单日之巅）：详情里的纪录块，日期 / 题数 / 来自哪个计划 */
+  .ad-rec{max-width:380px;margin:14px auto 0;padding:13px 16px 12px;text-align:center;
+     background:linear-gradient(150deg,var(--tint),#FFFDF7);
+     border:1.5px solid var(--bd);border-radius:14px;}
+  .ad-rec-k{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.5px;}
+  .ad-rec-v{font-size:17px;font-weight:800;color:var(--ink);margin-top:5px;}
+  .ad-rec-v b{background:linear-gradient(120deg,var(--c1),var(--c2));
+     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .ad-rec-f{font-size:11.5px;font-weight:600;color:var(--ink-3);margin-top:6px;}
+  .ach-detail.locked .ad-rec{filter:grayscale(.6);opacity:.75;}
   .ad-prog{max-width:380px;margin:18px auto 0;}
   .ad-prog .apbar{height:9px;}
   .ad-pnum{display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;
@@ -1296,6 +1306,12 @@
     <div class="dlegend" id="diffLegend"></div>
     <div class="psec" style="margin-top:16px">近 7 日趋势</div>
     <div class="spark" id="spark"></div>
+    <div class="psec" style="margin-top:16px">单日记录</div>
+    <div class="statbox">
+      <div class="strow" data-tip="只统计真正做的新题<br>换题补记与「之前做过」不计入<br>并列取更早的一天">
+        <span>单日完成最多</span><b id="stBest">—</b>
+      </div>
+    </div>
   </div>
 
   <div class="pblock" id="dockWeekly">

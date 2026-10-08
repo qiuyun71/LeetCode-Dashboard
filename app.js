@@ -283,6 +283,9 @@ var ACH=[
    val:function(s){return maxDaily(s);}},
   {id:'b12',cat:'burst',icon:'🐲',name:'肝帝附体',desc:'单一天完成 12 道题',target:12,unit:'题',
    val:function(s){return maxDaily(s);}},
+  /* 爆发·跨计划：所有计划里单日完成最多的一天（记录型成就，progress 位直接摆纪录） */
+  {id:'btop',cat:'burst',icon:'🏔️',name:'单日之巅',desc:'所有计划里，单日完成题数最多的一天',target:1,unit:'题',rec:true,
+   val:function(s){return (s.recAll&&s.recAll.count)||0;}},
   /* 收藏：错题本标记 */
   {id:'c1',cat:'collect',icon:'⭐',name:'首记经典',desc:'把第 1 道题标记为「经典」',target:1,unit:'道',
    val:function(s){return (s.markStats&&s.markStats.classic)||0;}},
@@ -307,6 +310,19 @@ function maxDaily(s){
   for(var k in d){if(d[k]>mx)mx=d[k];}
   return mx;
 }
+/* 本计划单日完成最多的一天（真正做的新题，和日历/热力图同源）。
+   并列取更早的一天——纪录属于第一次达成它的那天。 */
+function bestDay(s){
+  var d=s.daily||{},best=null;
+  for(var k in d){
+    var n=d[k]||0;
+    if(!n)continue;
+    if(!best||n>best.count||(n===best.count&&k<best.date)){
+      best={date:k,count:n};
+    }
+  }
+  return best;
+}
 /* 提前日天数：当天做题量 > 当日计划配额 */
 function earlyDays(s){
   var d=s.daily||{}, per=s.perDay||4, n=0;
@@ -318,7 +334,9 @@ function achCalc(s){
   return ACH.map(function(a){
     var target=a.dyn?a.dyn(s):a.target;
     var cur=a.val(s)||0;
-    return {def:a,cur:cur,target:target,ok:cur>=target};
+    var o={def:a,cur:cur,target:target,ok:cur>=target};
+    if(a.rec)o.rec=s.recAll||{date:'',count:0,list:''};
+    return o;
   });
 }
 /* 奖杯徽标：已解锁 / 总数 */
@@ -420,6 +438,13 @@ function achCardHTML(x){
   var num=x.target
     ?'<b>'+Math.min(x.cur,x.target)+'</b> / '+x.target+' '+a.unit
     :'<b>'+x.cur+'</b> '+a.unit;
+  /* 记录型成就（单日之巅）：不搞百分比，进度位直接摆纪录——哪天 · 几题 */
+  if(a.rec){
+    pct=x.ok?100:0;
+    num=(x.rec&&x.rec.count)
+      ?'<b>'+md(x.rec.date)+'</b> · '+x.rec.count+' '+a.unit
+      :'暂无记录';
+  }
   return '<button class="ach-card'+(x.ok?'':' locked')+'" '+
     'style="--c1:'+c.c1+';--c2:'+c.c2+';--tint:'+c.tint+';--bd:'+c.bd+'" '+
     'onclick="openAchDetail(\''+a.id+'\')">'+
@@ -440,6 +465,16 @@ function openAchDetail(id){
   var a=x.def,c=ACH_CATS[a.cat]||ACH_CATS.milestone;
   var pct=x.target?Math.min(100,Math.round(x.cur/x.target*100)):100;
   var left=Math.max(0,x.target-x.cur);
+  /* 记录型成就（单日之巅）：详情里单独一块摆完整纪录——日期 / 题数 / 来自哪个计划的哪轮 */
+  var recBlock='';
+  if(a.rec){
+    var ra=(STATE.recAll)||{date:'',count:0,list:''};
+    recBlock=ra.count
+      ?'<div class="ad-rec"><div class="ad-rec-k">目前的纪录</div>'+
+       '<div class="ad-rec-v">'+md(ra.date)+' · <b>'+ra.count+'</b> 题</div>'+
+       (ra.list?'<div class="ad-rec-f">来自「'+esc(ra.list)+'」</div>':'')+'</div>'
+      :'<div class="ad-rec"><div class="ad-rec-v">所有计划还没有任何一天的完成记录</div></div>';
+  }
   var h='<div class="ach-detail'+(x.ok?'':' locked')+'" '+
     'style="--c1:'+c.c1+';--c2:'+c.c2+';--tint:'+c.tint+';--bd:'+c.bd+'">'+
     '<button class="ach-back" onclick="renderAchList()">‹ 返回</button>'+
@@ -447,6 +482,7 @@ function openAchDetail(id){
     '<div class="ad-name">'+esc(a.name)+'</div>'+
     '<div class="ad-cat">'+c.name+'</div>'+
     '<div class="ad-desc">'+esc(a.desc)+'</div>'+
+    recBlock+
     '<div class="ad-prog"><div class="apbar"><i style="width:'+pct+'%"></i></div>'+
     '<div class="ad-pnum"><b>'+(x.target?Math.min(x.cur,x.target)+' / '+x.target+' '+a.unit:'')+'</b>'+
     '<span>'+(x.target?Math.round(pct)+'%':'')+'</span></div></div>'+
@@ -670,6 +706,18 @@ function renderStats2(s){
     el.setAttribute('data-tip','<div class="tt">'+md(x.date)+'</div><div class="tr">'+x.count+' 题</div>');
     sp.appendChild(el);
   });
+
+  /* 单日之最：本计划到目前为止完成最多的一天（日期 + 题数）。
+     只算真正做的新题（与 daily/日历同源），并列取更早的一天。 */
+  var be=document.getElementById('stBest');
+  if(be){
+    var bd=bestDay(s);
+    if(bd){
+      be.innerHTML=md(bd.date)+' · '+bd.count+' 题';
+    }else{
+      be.textContent='—';
+    }
+  }
 }
 
 /* 日历当前显示的月份（全局） */

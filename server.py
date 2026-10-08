@@ -1005,8 +1005,11 @@ def do_submit(l, di, rec_date=None):
     if not carry:
         b["tasks"] = []
         b["done"] = True
-        b["deficit"] = 0
-        b["completed"] = added
+        # completed 有值 = 这天之前交过了（「挑战自我」加题后的二次提交）：
+        # 这次是增量，累计而不是覆盖，否则当天总数会被冲掉
+        prev = b.get("completed")
+        b["deficit"] = (b.get("deficit") or 0) if prev is not None else 0
+        b["completed"] = (prev + added) if prev is not None else added
         return added, 0, 0, 0
 
     per = max(1, int(l.get("perDay", 4) or 4))
@@ -1046,8 +1049,9 @@ def do_submit(l, di, rec_date=None):
 
     b["tasks"] = []
     b["done"] = True
-    b["deficit"] = moved
-    b["completed"] = added
+    prev = b.get("completed")      # None = 这天第一次交；有值 = 挑战自我加题后的二次提交
+    b["deficit"] = ((b.get("deficit") or 0) + moved) if prev is not None else moved
+    b["completed"] = (prev + added) if prev is not None else added
     if moved:
         nxt["done"] = False
     return added, moved, 0, extra_n

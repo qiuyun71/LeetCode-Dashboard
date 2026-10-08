@@ -964,10 +964,15 @@ function dayHTML(day, di, s, isCur){
   if(day.extra){
     badge+='<span class="daybadge" style="background:#FEF3C7;color:#B45309">计划外补做</span>';
   }
+  /* 加一题：过去的天做完就禁用；今天就算全做完了也留着入口——
+     想多做题只能「+ 加一题」，不翻第二天的卡 */
+  var addOff=(fin&&day.date!==s.today)?'disabled':'';
+  var addTip=(fin&&day.date===s.today)
+    ?' data-tip="今天已全部完成<br>加一道 · 挑战自我"':'';
   var head='<div class="dayhead"><span class="daytitle">'+dtitle+'</span>'+
     '<span class="daydate">'+fmtDate(day.date)+' '+wd(day.date)+'</span>'+badge+
     '<span class="spacer"></span>'+
-    '<button class="addone" data-di="'+di+'" '+(fin?'disabled':'')+'>+ 加一题</button>'+
+    '<button class="addone" data-di="'+di+'" '+addOff+addTip+'>+ 加一题</button>'+
     '<button class="addone reset" data-di="'+di+'" data-tip="恢复成当天的原始题目<br>顺延进来的题会保留">重置</button></div>';
 
   var inner='';
@@ -1059,10 +1064,22 @@ function renderBoard(s){
       '这个题单还没有题目</div>';
     return;
   }
-  // 补做日排在数组末尾，但「当前天」应该是最后一个还没做完的普通天
-  var lastN=-1;
-  for(var i=0;i<s.board.length;i++) if(!s.board[i].extra) lastN=i;
-  if(lastN>=0&&!s.board[lastN].done) cur=lastN;
+  /* 「当前天」严格按日期锁定今天：做完今天也停留当天，绝不顺手把明天的卡翻出来；
+     跨到第二天只靠零点自动刷新（watchNewDay）或下次启动服务（auto_settle）。
+     数据里找不到今天（停机多日没补结算 / 计划排满）才退化成
+     「最后一个还没做完的普通天」，保证老状态也有合理落点。 */
+  var todayI=-1;
+  for(var i=0;i<s.board.length;i++){
+    if(s.board[i].date===s.today){todayI=i;break;}
+  }
+  if(todayI>=0){
+    cur=todayI;
+  }else{
+    // 补做日排在数组末尾，兜底时仍以普通天优先
+    var lastN=-1;
+    for(var j=0;j<s.board.length;j++) if(!s.board[j].extra) lastN=j;
+    if(lastN>=0&&!s.board[lastN].done) cur=lastN;
+  }
 
   var dcur=s.board[cur];
   var dkey=(s.activeList||'')+'#'+dcur.dayIndex+'#'+dcur.date+(dcur.extra?'#x':'');
@@ -1300,7 +1317,9 @@ async function submit(di){
 }
 
 /* ============ 结算页 ============
-   提交后弹出来的那一屏：这次做完了什么、难度分布、以及记录记到哪一天。 */
+   提交后弹出来的那一屏：这次做完了什么、难度分布、以及记录记到哪一天。
+   当天全部完成时，统计最上方多一条庆祝横幅，主按钮变「挑战自我」
+   （加一道题继续做）；没完成时主按钮换成鼓励词，点击照样回当天题板。 */
 function showSettle(j){
   var picked=j.picked||[], n=picked.length;
   var diff={'easy':0,'medium':0,'hard':0};
@@ -1319,9 +1338,32 @@ function showSettle(j){
     sub='本该是 '+md(j.planDate)+' 的题，做于 '+md(j.recDate)+'，<b>计入今天</b>的完成量与日历';
   }
 
-  var h='';
-  h+='<div class="settle">'+
-    '<div class="shead"><div class="stitle">'+head+'</div>'+
+  /* 庆祝判定：这一交把当天板面上的题全收了（没顺延、也没剩题）。
+     「挑战自我」加题后再交一次也走这里——carried=0 一样庆祝。 */
+  var allDone=!j.carried && !j.remain;
+
+  /* 当天的总完成量 / 第几天：交完后板面已清空，从新 state 里按计划日期找回那天 */
+  var dayB=null;
+  if(j.state&&j.state.board){
+    for(var bi=0;bi<j.state.board.length;bi++){
+      var bb=j.state.board[bi];
+      if(!bb.extra&&bb.date===(j.planDate||'')){dayB=bb;break;}
+    }
+  }
+  var dTotal=dayB?(dayB.completed||0):n;
+  var dNo=dayB?(dayB.dayIndex+1):0;
+  var st=STATE&&STATE.stats?STATE.stats:{};
+
+  var h='<div class="settle">';
+  if(allDone){
+    h+='<div class="scele">'+
+      '<div class="sc-em">🎉</div>'+
+      '<div class="sc-t">今天已全部完成！</div>'+
+      '<div class="sc-s">第 '+dNo+' 天 · 完成 <b>'+dTotal+'</b> 题'+
+        (st.streak>1?' · 连续刷题 <b>'+st.streak+'</b> 天':'')+'</div>'+
+      '</div>';
+  }
+  h+='<div class="shead"><div class="stitle">'+head+'</div>'+
     '<div class="ssub">'+sub+'</div></div>';
 
   if(n>0){
@@ -1355,15 +1397,34 @@ function showSettle(j){
      '<div><b>'+(j.state?Math.max(0,j.state.target-(j.state?j.state.doneCount:0)):'-')+'</b> 题待做</div>'+
      '</div>';
 
+  /* 底部按钮：
+     全部完成 → 「⚔ 挑战自我」：关弹窗给当天加一道题，想多做题只能这么加
+     没完成   → 鼓励词（还差 N 题 · 一鼓作气），点击关弹窗回当天题板 */
+  var primary;
+  if(allDone){
+    primary='<button class="sbtn primary" onclick="settleChallenge()">⚔ 挑战自我</button>';
+  }else if(j.carried>0){
+    primary='<button class="sbtn primary" onclick="settleBack()">还差 '+j.carried+
+      ' 题 · 一鼓作气 💪</button>';
+  }else{
+    primary='<button class="sbtn primary" onclick="settleBack()">继续把今天的题做完 →</button>';
+  }
   h+='<div class="sbtns">'+
      '<button class="sbtn ghost" onclick="closeSettle()">留在这儿</button>'+
-     '<button class="sbtn primary" onclick="settleNext()">继续做题 →</button>'+
+     primary+
      '</div></div>';
 
   var m=document.getElementById('settleMask');
   var box=document.getElementById('settleBox');
   if(box)box.innerHTML=h;
   if(m)m.classList.add('show');
+  if(allDone){
+    /* 撒一把纸屑（复用奖杯那套粒子），等弹窗入场动画起来再撒 */
+    setTimeout(function(){
+      var el=document.querySelector('#settleBox .scele');
+      if(el)trophySparks(el);
+    },150);
+  }
 }
 
 function closeSettle(){
@@ -1371,13 +1432,28 @@ function closeSettle(){
   if(m)m.classList.remove('show');
 }
 
-/* 「继续做题」：关掉结算页并把视口带回题板 */
-function settleNext(){
+/* 「一鼓作气 / 继续做完」：关掉结算页，视口带回当天题板 */
+function settleBack(){
   closeSettle();
   var b=document.getElementById('board');
   if(b&&b.scrollIntoView)b.scrollIntoView({behavior:'smooth',block:'center'});
   var mk=document.querySelector('.submit:not([disabled])');
   if(mk)setTimeout(function(){mk.focus();},260);
+}
+
+/* 「挑战自我」：今天已全做完，想继续做只能「+ 加一题」——
+   关掉结算页、给当天加一道、视口带回题板（不翻第二天的卡） */
+function settleChallenge(){
+  closeSettle();
+  var s=STATE,di=-1;
+  if(s&&s.board){
+    for(var i=0;i<s.board.length;i++){
+      if(!s.board[i].extra&&s.board[i].date===s.today){di=i;break;}
+    }
+  }
+  if(di>=0)addOne(di);
+  var b=document.getElementById('board');
+  if(b&&b.scrollIntoView)b.scrollIntoView({behavior:'smooth',block:'center'});
 }
 
 async function expand(){

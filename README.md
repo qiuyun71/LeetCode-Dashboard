@@ -40,7 +40,7 @@
 
 ### 方式一：Windows 双击（最省事）
 
-下载解压后，双击 **`打开看板.bat`**，浏览器会自动打开。
+下载解压后，双击 **`启动/打开看板.bat`**，浏览器会自动打开。
 
 `打开看板.bat` 会按顺序找 Python：`python` → `python3` → `py -3` →
 `%LOCALAPPDATA%\Programs\Python\Python3xx\` → 项目内 `python\`。
@@ -51,9 +51,9 @@
 ```bash
 git clone <你的仓库地址> && cd leetcode-board
 
-python3 start.py        # 起服务 + 自动开浏览器
+python3 启动/start.py   # 起服务 + 自动开浏览器
 # 或者
-./start.sh              # 同上（macOS / Linux）
+./启动/start.sh         # 同上（macOS / Linux）
 ```
 
 ### 方式三：手动起服务（推荐给开发者）
@@ -65,9 +65,11 @@ python3 server.py       # 只起服务，浏览器访问 http://127.0.0.1:8765
 | 命令 | 作用 |
 |------|------|
 | `python3 server.py` | 只起本地服务（前台，日志打在终端） |
-| `python3 start.py` | 检测端口 → 未运行则静默拉起服务 → 开浏览器 |
+| `python3 启动/start.py` | 检测端口 → 未运行则静默拉起服务 → 开浏览器 |
 | `python3 seed_lc100.py` | 重建 LeetCode 100 题单（**会清空进度**，谨慎） |
-| `python3 _x.py` | 跑回归测试（在副本上跑，不碰你的真实数据） |
+
+> 回归测试脚本在开发副本里（`_x.py`，跑在独立端口的副本数据上，不碰真实 `plan.json`），
+> 日常使用目录不带它。
 
 ### 环境变量（进阶）
 
@@ -88,7 +90,7 @@ LEET_PLAN=_t_plan.json LEET_PORT=8799 python3 server.py
 | 方式 | 命令 | 表现 | 怎么停 |
 |------|------|------|--------|
 | **前台**（调试用） | `python3 server.py` | 终端占着，日志直接打屏 | `Ctrl+C` |
-| **后台 + 开浏览器**（日常推荐） | `python3 start.py` | 立刻返回控制台，不留窗口 | 任务管理器结束 `python` / `pythonw` |
+| **后台 + 开浏览器**（日常推荐） | `python3 启动/start.py` | 立刻返回控制台，不留窗口 | 任务管理器结束 `python` / `pythonw` |
 | **后台无窗口** | `pythonw server.py` | Windows 上完全没有黑框 | 任务管理器 |
 | **后台 + 日志**（mac/Linux） | `nohup python3 server.py > server.log 2>&1 &` | 无窗口，日志落盘 | `pkill -f server.py` |
 
@@ -110,14 +112,15 @@ leetcode-board/
 ├── app.js               # 前端逻辑
 ├── plan.json            # 你的刷题数据（本地文件，不进仓库）
 ├── plan.example.json    # 数据模板（复制成 plan.json 即可用）
-├── start.py             # 启动器（静默拉起服务 + 开浏览器）
-├── start.sh             # macOS / Linux 启动脚本
-├── 打开看板.bat         # Windows 一键启动
 ├── seed_lc100.py        # LeetCode 100 题库（重建用）
-├── toast.ps1            # Windows 系统通知
-├── _x.py                # 回归测试（副本服务，不碰真实数据）
-├── assets/              # 背景图（AI 生成：默认水墨风 + 备用吉卜力风）
+├── assets/              # 背景图（水墨风）
 ├── docs/screenshot.png  # README 配图
+├── 启动/                # 启动方式都放这里
+│   ├── 打开看板.bat     # Windows 一键启动（双击即用）
+│   ├── start.py         # 启动器（静默拉起服务 + 开浏览器）
+│   ├── start.sh         # macOS / Linux 启动脚本
+│   ├── toast.ps1        # Windows 系统通知（被 server.py 调用）
+│   └── server.log       # 启动器拉起服务时的日志（运行时生成）
 ├── LICENSE              # MIT
 ├── .gitignore           # 排除 plan.json 等个人数据
 ├── .gitattributes       # 统一换行符，保证 start.sh 在 mac/Linux 能跑

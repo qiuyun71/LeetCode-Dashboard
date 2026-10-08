@@ -10,7 +10,8 @@ import sys
 import time
 import webbrowser
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.abspath(__file__))   # 启动/ 目录
+ROOT = os.path.dirname(BASE)                        # 项目根（上一级）
 PORT = int(os.environ.get("LEET_PORT") or 8765)   # 与 server.py 保持一致
 URL = "http://127.0.0.1:%d" % PORT
 PY = sys.executable
@@ -40,10 +41,10 @@ def launch_server():
     for flags in (base_flags | detach, base_flags, 0):
         try:
             subprocess.Popen(
-                [PY, os.path.join(BASE, "server.py")],
+                [PY, os.path.join(ROOT, "server.py")],
                 creationflags=flags,
                 close_fds=True,
-                cwd=BASE,
+                cwd=ROOT,
                 stdin=subprocess.DEVNULL,
                 stdout=logf,
                 stderr=logf,

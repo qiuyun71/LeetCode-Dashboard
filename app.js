@@ -1148,8 +1148,11 @@ function openPanel(kind){
         '<div class="cell2" style="cursor:pointer" onclick="exportData(\'csv\')">'+
           '<div class="v">CSV</div><div class="k">表格，可看 Excel</div></div>'+
       '</div>'+
-      '<div class="fhelp">导出的是<b>当前题单</b>的进度数据（含题目、完成记录、计划设置）。</div>'+
-      '<div class="psec" style="margin-top:20px">重新开启计划</div>'+
+      '<div class="fhelp">导出的是<b>当前题单</b>的进度数据（含题目、完成记录、计划设置）。</div>';
+  }else if(kind==='reset'){
+    title.innerHTML='重新开始<span class="msub">当前第 '+(s.round||1)+' 轮 · '+esc(s.activeName||'')+'</span>';
+    body.innerHTML=
+      '<div class="psec">开始新一轮</div>'+
       '<div class="pbig" style="grid-template-columns:1fr">'+
         '<div class="cell2" style="cursor:pointer" onclick="restartRound()">'+
           '<div class="v">↻ 重新开始一轮</div>'+

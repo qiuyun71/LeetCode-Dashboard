@@ -314,33 +314,51 @@ def do_mark(l, pid, kind=None, note=None):
 
 
 def plan_view(l):
-    """计划概览：总题数 / 每天题数 / 剩余天数 / 起止日期
+    """计划概览：总题数 / 每天题数 / 总天数 / 起止日期
 
-    剩余天数与结束日期按「还没做完的题」动态算：
-      标记「之前做过」会把题从计划里剔除 -> total 变小 -> 剩余天数变少 -> 结束日期提前。
-      例：100 题 / 每天 5 题，已完成 10 题时剩 18 天；再标记 10 道 -> 剩 16 天。
+    总天数（days）= 原计划天数 + 补做日天数 - 已提前做掉的天数：
+      · 欠账超出「当天上限」（每天题数×2）顺延出去的补做日挂在原计划
+        最后一天之后，计划随之 +1 天（25 天变 26 天）；
+      · 提前把后面的题做掉（如一天做完两天的量），计划相应缩短，
+        总天数变少、结束日期提前——日历上那些天标薄荷青「提前完成」。
+    结束日期不早于名义结束日：落后 / 暂停过，就按剩余题数从今天往后顺延。
     """
     total = total_problems(l)
     per = max(1, int(l.get("perDay", 4) or 4))
     start = l.get("startDate") or datetime.date.today().isoformat()
+    try:
+        d0 = datetime.date.fromisoformat(start)
+    except Exception:
+        d0 = datetime.date.today()
     today = datetime.date.today()
 
+    board = l.get("board") or []
+    extras = [b for b in board if b.get("extra")]
+    extra_open = sum(1 for b in extras if not b.get("done"))
+    plan_len = len(build_days(l))
     done_daily = sum(1 for d in done_list(l) if not d.get("pre"))
     left = max(0, total - done_daily)
-    days_left = (left + per - 1) // per if left else 0
-    # 欠账顺延出来的「补做日」也要占天数，计划随之延长
-    days_left += sum(1 for b in (l.get("board") or [])
-                     if b.get("extra") and not b.get("done"))
 
-    end = (today + datetime.timedelta(days=max(0, days_left - 1))).isoformat()
+    total_days = max(1, plan_len + len(extras) - eaten_days(l))
+
+    # 剩余天数（含今天）：题板上还没做完的天，和「剩余题数 ÷ 每天题数」取小
+    frontier = max([b.get("dayIndex", 0) for b in board
+                    if not b.get("extra")] or [0])
+    slot_left = max(0, plan_len - frontier) + extra_open
+    days_left = min(slot_left, (left + per - 1) // per + extra_open)
+
+    nominal_end = d0 + datetime.timedelta(days=total_days - 1)
+    dyn_end = today + datetime.timedelta(days=max(0, days_left - 1))
+    end = max(nominal_end, dyn_end)
     return {
         "total": total,
         "allTotal": all_problems_count(l),
         "perDay": per,
-        "days": days_left,
+        "days": total_days,
+        "daysLeft": days_left,
         "left": left,
         "startDate": start,
-        "endDate": end,
+        "endDate": end.isoformat(),
         "limit": l.get("limit"),
         "done": len(done_list(l)),
     }
@@ -614,6 +632,56 @@ def cross_plan_record(p):
 
 # ============ 统计 ============
 
+def early_dates(l):
+    """「提前日」：原定那天的题已经提前做掉的日子（日历标薄荷青 + ↑）
+
+    判定：到这一天开始之前，累计完成量已经覆盖了它原定的配额，
+    即 cumDone(D-1) >= perDay × (D - startDate + 1)。
+      · 今天不算——它正在进行，当天超量完成由当天格子自己的样式表达；
+      · 过去的日子也算：它的题早就做掉了，不该被日历判成「空缺」标红；
+      · 只算真正做的新题，标记「之前做过」的补记不算。
+    返回日期字符串列表（升序）。
+    """
+    per = max(1, int(l.get("perDay", 4) or 4))
+    start = l.get("startDate") or ""
+    try:
+        d0 = datetime.date.fromisoformat(start)
+    except Exception:
+        return []
+    days = build_days(l)
+    if not days:
+        return []
+    daily = daily_counts(l)
+    today = datetime.date.today().isoformat()
+    cum, out = 0, []
+    for k in range(len(days)):
+        ds = (d0 + datetime.timedelta(days=k)).isoformat()
+        if ds != today and cum >= per * (k + 1):
+            out.append(ds)
+        cum += daily.get(ds, 0)
+    return out
+
+
+def eaten_days(l):
+    """已经提前做掉的计划天数（整数天）——总天数要相应缩短
+
+    累计完成量超出「按日历走到今天」的配额，超出部分折算成整天：
+    例：每天 4 题，今天一天做完 8 题 -> 超出 4 题 = 1 天 -> 总天数 -1。
+    欠账（落后）时为 0，不会把计划「缩短」成负数。
+    """
+    per = max(1, int(l.get("perDay", 4) or 4))
+    start = l.get("startDate") or ""
+    try:
+        d0 = datetime.date.fromisoformat(start)
+    except Exception:
+        return 0
+    elapsed = (datetime.date.today() - d0).days + 1
+    if elapsed <= 0:
+        return 0
+    done_n = sum(1 for d in done_list(l) if not d.get("pre"))
+    return max(0, (done_n - per * elapsed) // per)
+
+
 def stats_view(l):
     idmap = {}
     for cn, t in flat_problems(l):
@@ -729,10 +797,11 @@ def build_stamp():
 def state_view(p):
     l = get_list(p)
     if l is None:
-        return {"board": [], "doneCount": 0, "preCount": 0, "target": 0,
+        return {        "board": [], "doneCount": 0, "preCount": 0, "target": 0,
                 "totalDays": 0, "today": datetime.date.today().isoformat(),
                 "poolLeft": 0, "daily": {}, "dailyDetail": {}, "tasks": [],
                 "categories": [], "lists": [], "activeList": "",
+                "extraDates": [], "earlyDates": [],
                 "stats": stats_view({"categories": [], "pool": [], "done": [], "board": []}),
                 "marks": [], "markStats": marks_stats([]),
                 "weekly": weekly_view({"done": []}),
@@ -751,13 +820,18 @@ def state_view(p):
         "pauses": [s for s in (l.get("pauses") or []) if isinstance(s, dict)],
         "extraDates": [b.get("date") for b in (l.get("board") or [])
                        if b.get("extra") and b.get("date")],
+        # 「提前日」：原定那天的题已经提前做掉（日历薄荷青 + ↑）
+        "earlyDates": early_dates(l),
         "round": len([r for r in (l.get("rounds") or []) if isinstance(r, dict)]) + 1,
         "rounds": [{"no": r.get("no"), "from": r.get("from") or "", "to": r.get("to") or "",
                     "count": r.get("count") or 0, "done": r.get("done") or []}
                    for r in (l.get("rounds") or []) if isinstance(r, dict)],
         "preDone": [{"id": d["id"]} for d in dl if d.get("pre")],
         "target": total_problems(l),
-        "totalDays": len(build_days(l)),
+        # 总天数 = 原计划 + 补做日 - 提前做掉的天（「已展开 X / N 天」的分母）
+        "totalDays": max(1, len(build_days(l))
+                         + sum(1 for b in (l.get("board") or []) if b.get("extra"))
+                         - eaten_days(l)),
         "today": datetime.date.today().isoformat(),
         "poolLeft": len(l.get("pool", [])),
         "candLeft": len(_cands),
@@ -919,11 +993,24 @@ def do_add(p, l, di, n=1):
     return added, (None if added else "no_candidate")
 
 
-def _reflow_extra(l):
-    """把「补做日」统一排到普通天之后
+def _plan_end(l):
+    """原计划的最后一天（不含补做日）：startDate + 计划天数 - 1"""
+    start = l.get("startDate") or datetime.date.today().isoformat()
+    try:
+        d0 = datetime.date.fromisoformat(start)
+    except Exception:
+        d0 = datetime.date.today()
+    return d0 + datetime.timedelta(days=max(0, len(build_days(l)) - 1))
 
-    补做日是计划末尾追加的一（多）天，序号和日期都必须落在最后一个普通天之后，
-    否则它会跟还没展开的计划天撞号 —— 「展开下一天」会直接跳过那一批题。
+
+def _reflow_extra(l):
+    """把「补做日」统一排到原计划最后一天之后
+
+    补做日是计划末尾追加的一（多）天，序号和日期都必须落在原计划最后一天
+    （以及已展开的最后一个普通天）之后，否则它会跟还没展开的计划天撞号——
+    「展开下一天」会直接跳过那一批题；日历上也会落进计划区间里，
+    分不清是补做日还是普通天。补做日与提前日的界限也以原计划最后一天为准：
+    超出它的都算补做日，早于它的算提前日。
     """
     board = l.get("board", [])
     normals = [b for b in board if not b.get("extra")]
@@ -933,11 +1020,13 @@ def _reflow_extra(l):
     if not normals:
         return
     base_i = max(b.get("dayIndex", 0) for b in normals)
+    base_d = _plan_end(l)
     try:
-        base_d = datetime.date.fromisoformat(
+        last_n = datetime.date.fromisoformat(
             max(b.get("date", "") for b in normals))
+        base_d = max(base_d, last_n)
     except Exception:
-        base_d = datetime.date.today()
+        pass
     for k, b in enumerate(extras, start=1):
         b["dayIndex"] = base_i + k
         b["date"] = (base_d + datetime.timedelta(days=k)).isoformat()
@@ -995,10 +1084,11 @@ def do_submit(l, di, rec_date=None):
     1. 手动提交（rec_date=None，点「确定完成」）：没勾的题**留在当天**，
        当天 done 保持 False，回题板「一鼓作气」把剩下的做完再交就行。
        没做完不欠账、不挪窝——当天只有真正结束（午夜 auto_settle）才翻篇。
-    2. 午夜自动结算（auto_settle 传 rec_date=那天的计划日期）：没勾的按
-       欠账规则顺延——下一天最多接 perDay×2 道，**超出的不再往后续天堆**，
-       而是顺延到计划末尾新增的「补做日」（extra=True，日历上换颜色标注）。
-       这样欠账不会雪球式越滚越大、某天突然冒出十几道题。
+    2. 午夜自动结算 / 一题没勾的「确认翻篇」（rec_date 传值）：没勾的按
+       欠账规则顺延——下一天连自己的题最多接 perDay×2 道，**超出的不再往
+       后续天堆**，而是顺延到计划末尾新增的「补做日」（extra=True，日历上
+       换颜色标注，排在原计划最后一天之后）。这样欠账不会雪球式越滚越大、
+       某天突然冒出十几道题。
 
     完成记录的日期：手动提交 = 今天（提前做后面几天的题也算今天的做题量）；
     自动结算传 rec_date = 那天的计划日期（昨晚忘了点提交，记录仍算昨天）。
@@ -1044,10 +1134,6 @@ def do_submit(l, di, rec_date=None):
 
     per = max(1, int(l.get("perDay", 4) or 4))
     cap = per * 2
-    to_next, to_extra = carry, []
-    if len(carry) > cap:                 # 超过两倍 -> 多出来的进补做日
-        to_next = carry[:cap]
-        to_extra = carry[cap:]
 
     # 先安置「下一天」——注意排除补做日，否则会把补做日当成下一天
     nxt = None
@@ -1061,9 +1147,15 @@ def do_submit(l, di, rec_date=None):
             board.append(nxt)
 
     if nxt is None:
-        b["tasks"] = to_next + to_extra
+        # 计划已经排满、没有下一天：没地方顺延，题留在当天
+        b["tasks"] = carry
         b["done"] = False
-        return added, 0, len(b["tasks"]), 0
+        return added, 0, len(carry), 0
+
+    # 当天上限 = 原计划每天题数×2：下一天连自己的题带顺延进来的都不能超，
+    # 超出的部分才挪到计划末尾的「补做日」——欠账不滚雪球，也不会某天突然十几题
+    room = max(0, cap - len(nxt.get("tasks") or []))
+    to_next, to_extra = carry[:room], carry[room:]
 
     have = {t.get("id") for t in nxt.get("tasks", [])}
     moved = 0
@@ -2103,10 +2195,14 @@ class Handler(BaseHTTPRequestHandler):
                            "category": t.get("category") or ""}
                           for t in (_day.get("tasks") or []) if t.get("checked")]
                 plan_date = _day.get("date") or ""
-                added, carried, remain, extra_n = do_submit(l, di)
+                # 一题没勾也允许「确认翻篇」：rec_date 传今天 -> 按当天结束处理
+                # （没勾的按欠账顺延，超当天上限的进补做日）
+                zero = bool(data.get("zero"))
+                rec = datetime.date.today().isoformat() if zero else None
+                added, carried, remain, extra_n = do_submit(l, di, rec_date=rec)
                 save_plan(p)
                 self._json({"ok": True, "added": added, "carried": carried,
-                            "remain": remain, "extra": extra_n,
+                            "remain": remain, "extra": extra_n, "zero": zero,
                             "picked": picked, "planDate": plan_date,
                             "recDate": datetime.date.today().isoformat(),
                             "state": state_view(p)})

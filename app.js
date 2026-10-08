@@ -755,8 +755,10 @@ function renderCalendar(s){
   var nameById={};
   (s.tasks||[]).forEach(function(t){nameById[t.id]=t.name;});
 
-  /* 欠账超出上限顺延出来的「补做日」，日历上换颜色 */
+  /* 欠账超出上限顺延出来的「补做日」，日历上换颜色（琥珀） */
   var extraDates=s.extraDates||[];
+  /* 「提前日」：原定那天的题已经提前做掉了（如今天超额完成），薄荷青 + ↑ */
+  var earlyDates=s.earlyDates||[];
 
   /* 暂停区间：落在区间内的日子算「暂停中」，不判为空缺（不标红） */
   var pauses=s.pauses||[];
@@ -779,7 +781,8 @@ function renderCalendar(s){
   // 计划区间提示
   var rg=document.getElementById('calRange');
   if(pStart&&pEnd){
-    rg.innerHTML='计划区间：<b>'+fmtDate(pStart)+'</b> → <b>'+fmtDate(pEnd)+'</b>（共 '+plan.days+' 天）';
+    var span=Math.round((Date.parse(pEnd+'T00:00:00')-Date.parse(pStart+'T00:00:00'))/86400000)+1;
+    rg.innerHTML='计划区间：<b>'+fmtDate(pStart)+'</b> → <b>'+fmtDate(pEnd)+'</b>（共 '+span+' 天）';
   }else{
     rg.innerHTML='还没有设定计划区间';
   }
@@ -806,7 +809,25 @@ function renderCalendar(s){
 
     var pausedDay=inPause(ds);
 
-    if(n>0){
+    /* 提前日优先：这天的题已经提前做掉了（可能是过去某天超额完成时做掉的），
+       不管当天有没有新记录都标薄荷青 + ↑；尤其不能掉进下面的「空缺」标红 */
+    var isEarly=earlyDates.indexOf(ds)>=0;
+    if(isEarly){
+      cls+=' early';
+      if(n>0){
+        c.innerHTML='<span class="dn">'+d+'</span><span class="cnt">'+n+'</span>';
+        monthTotal+=n;
+        var rows0=(detail[ds]||[]).map(function(id){
+          return '<div class="tr">#'+id+' '+esc(nameById[id]||'')+'</div>';
+        }).join('');
+        c.setAttribute('data-tip',head+'<div class="tr" style="color:#0F766E;font-weight:800">'+
+          '↑ 提前完成 · '+n+' 题</div>'+rows0);
+      }else{
+        c.textContent=d;
+        c.setAttribute('data-tip',head+'<div class="tr" style="color:#0F766E;font-weight:800">'+
+          '↑ 提前完成</div><div class="tr">原定这一天的题，已经提前做掉了</div>');
+      }
+    }else if(n>0){
       /* 做过题：日期居中 + 做题量右上角标。原来直接把日期替换成题数，
          「4」分不清是 4 号还是做了 4 题。颜色深浅继续编码做题量。 */
       var lvl=n>=8?4:n>=5?3:n>=3?2:1;
@@ -1055,14 +1076,15 @@ function dayHTML(day, di, s, isCur){
 
   // 说明不再铺成文字，挂在「确定完成」按钮里的问号上（hover 才看）
   var per=(s.plan&&s.plan.perDay)||4;
+  var ck=0;day.tasks.forEach(function(t){if(t.checked)ck++;});
   // 注意：data-tip 是 HTML 属性，里面只能用单引号，双引号会把属性提前闭合
   var qtip="<div class='tt'>没做完也能直接点「确定完成」</div>"+
     "<div class='tr'>· 没勾的题会<b style='color:#B45309'>留在今天</b>，回去做完再交</div>"+
-    "<div class='tr'>· 只有当天结束（午夜自动结算）才顺延到第二天</div>"+
-    "<div class='tr'>· 顺延超过 "+per*2+" 道的部分，挪到计划末尾的补做日</div>"+
-    "<div class='tr'>· 补做日在日历上是<b style='color:#B45309'>琥珀色</b>那天</div>";
+    "<div class='tr'>· 一题没勾也能确认——这天翻篇，题按欠账顺延</div>"+
+    "<div class='tr'>· 第二天最多接 "+per*2+" 道（当天上限 = 每天题数×2）</div>"+
+    "<div class='tr'>· 超出的挪到计划末尾的补做日（日历<b style='color:#B45309'>琥珀色</b>）</div>";
   var btn='<button class="submit" data-di="'+di+'" '+(fin?'disabled':'')+'>'+
-    (fin?'已完成':'确定完成')+
+    (fin?'已完成':(ck===0?'0 题 · 确认翻篇':'确定完成'))+
     (fin?'':'<span class="swq" data-tip="'+qtip+'">?</span>')+'</button>';
   var tip='';
   // 当前天只留「撤销」。展开下一天交给服务端跨天自动做：
@@ -1354,8 +1376,23 @@ async function addOne(di){
   toast('已加 1 题');load();
 }
 async function submit(di){
+  var day=(STATE&&STATE.board)?STATE.board[di]:null;
+  var ck=0;
+  if(day&&day.tasks)day.tasks.forEach(function(t){if(t.checked)ck++;});
+  if(ck===0){
+    /* 一题没勾也允许确认翻篇：这天按结束处理——
+       没做的题按欠账顺延（第二天上限 per×2），超出的挪补做日。
+       先问一句，免得好不容易点错把一天交代了。 */
+    var per=(STATE&&STATE.plan&&STATE.plan.perDay)||4;
+    if(!confirm('今天一题都没做。\n\n确认后这天翻篇：没做的题按欠账顺延——'+
+      '第二天最多 '+per*2+' 题，超出部分挪到计划末尾的补做日。\n\n确定吗？'))return;
+    var j0=await post('/api/submit',{day:di,zero:1});
+    load();
+    showSettle(j0);
+    return;
+  }
   var j=await post('/api/submit',{day:di});
-  if(j.added===0&&j.carried===0){toast('还没勾选任何题');return;}
+  if(j.added===0&&j.carried===0&&j.remain===0){toast('没有可提交的变化');return;}
   load();
   showSettle(j);
 }
@@ -1373,9 +1410,13 @@ function showSettle(j){
 
   // 记录日期：默认记到今天；如果是提前做明天的题，明确说明
   var sameDay=(!j.planDate||j.planDate===j.recDate);
-  var head=n===0?'今天没做新题':(n===1?'完成 1 道题':'完成 '+n+' 道题');
+  var head=n===0?(j.zero?'今天 0 题 · 这天翻篇':'今天没做新题')
+    :(n===1?'完成 1 道题':'完成 '+n+' 道题');
   var sub;
-  if(n===0){
+  if(n===0&&j.zero){
+    sub='没勾的题已按欠账顺延'+(j.extra>0?'，超出当天上限的挪到了补做日':'')+
+      '；日历上这天记为未完成';
+  }else if(n===0){
     sub='勾的题都已经在记录里了，去看看别的吧';
   }else if(sameDay){
     sub='记录到 '+md(j.recDate)+'，已计入完成与日历';
@@ -1429,8 +1470,8 @@ function showSettle(j){
 
   // 没做完的题留在今天（只有午夜自动结算才顺延）/ 补做情况
   var tail=[];
-  if(j.carried>0)tail.push(j.carried+' 题没勾，已顺延到'+(j.extra>0?'补做日':'第二天的题板'));
-  if(j.extra>0)tail.push(j.extra+' 题超出上限，挪到计划末尾的补做日');
+  if(j.carried>0)tail.push('没做的 '+j.carried+' 题顺延到第二天的题面');
+  if(j.extra>0)tail.push(j.extra+' 题超出当天上限，挪到计划末尾的补做日');
   if(j.remain>0)tail.push('还剩 '+j.remain+' 题留在今天，回去「一鼓作气」把它做完');
   if(tail.length){
     h+='<div class="scar">'+tail.map(esc).join(' · ')+'</div>';
@@ -1446,13 +1487,16 @@ function showSettle(j){
   /* 底部按钮：
      全部完成 → 「⚔ 挑战自我」：关弹窗给当天加一道题，想多做题只能这么加
      没完成   → 鼓励词（还差 N 题 · 一鼓作气），点击关弹窗回当天题板——
-                 没勾的题还留在今天的板面上，回去接着做完就行 */
+                 没勾的题还留在今天的板面上，回去接着做完就行
+     0 题翻篇 → 这天已经结束，题顺延走了，看完点「知道了」 */
   var primary;
   if(allDone){
     primary='<button class="sbtn primary" onclick="settleChallenge()">⚔ 挑战自我</button>';
   }else if(j.remain>0){
     primary='<button class="sbtn primary" onclick="settleBack()">还差 '+j.remain+
       ' 题 · 一鼓作气 💪</button>';
+  }else if(j.zero){
+    primary='<button class="sbtn primary" onclick="closeSettle()">知道了</button>';
   }else{
     primary='<button class="sbtn primary" onclick="settleBack()">继续把今天的题做完 →</button>';
   }
@@ -1707,7 +1751,7 @@ function welRender(){
         '<div class="guide"><div class="ic">✓</div><div>'+
           '<div class="gt">勾选做完的题</div>'+
           '<div class="gd">点题目卡片就能勾上。没做完也可以直接点「确定完成」，'+
-          '剩下的题会留在今天，随时回去「一鼓作气」做完。</div></div></div>'+
+          '剩下的题会留在今天，随时回去「一鼓作气」做完；一题没勾也能确认翻篇。</div></div></div>'+
         '<div class="guide"><div class="ic">⇄</div><div>'+
           '<div class="gt">做过的题可以「换一题」</div>'+
           '<div class="gd">某题以前刷过，点「换一题」从题库换一道没做过的，'+

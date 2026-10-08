@@ -48,7 +48,8 @@ try:
     cur = len(s0["board"]) - 1
     print("题单=%s 每天=%s 题 -> 上限=%s" % (s0["activeList"], per, cap))
 
-    # 造场景：每天 1 题（上限 2），把当天堆到 5 题，全不勾选提交 -> 应分流成 2 顺延 + 3 补做日
+    # 造场景：每天 1 题（上限 2），把当天堆到 5 题，0 勾选「确认翻篇」 ->
+    # 第二天自身 1 题 + 顺延 1 题 = 上限 2，其余 4 道进补做日
     post("/api/setplan", {"perDay": 1, "reset": False})
     s0 = get("/api/state")
     per = s0["plan"]["perDay"]
@@ -70,25 +71,34 @@ try:
     assert ntasks > cap, "需要一天题数超过上限(%s)才能测出分流，实际 %s" % (cap, ntasks)
     days0 = s0["plan"]["days"]
 
-    print("\n== 1. 整题提交（一道都不勾，全部变欠账）==")
-    j = post("/api/submit", {"day": cur})
+    print("\n== 1. 0 勾选确认翻篇（一道都不勾，全部变欠账）==")
+    j = post("/api/submit", {"day": cur, "zero": 1})
     print("   added=%s carried=%s extra=%s" % (j.get("added"), j.get("carried"), j.get("extra")))
+    assert j.get("zero"), "应走 0 题确认翻篇通道"
     assert j.get("carried") <= cap, "顺延到明天不应超过上限 %s 题，实际 %s" % (cap, j.get("carried"))
     assert j.get("carried") > 0, "应该有题顺延下去"
     assert j.get("extra") > 0, "超过上限的部分应进补做日"
     # 守恒：当天没做完的题 =顺延到明天的 + 进补做日的
     assert j.get("carried") + j.get("extra") == ntasks, \
         "顺延 %s + 补做 %s 应等于当天 %s 题" % (j.get("carried"), j.get("extra"), ntasks)
-    # 上限确实是「顺延到明天」的量：顺延数应该正好卡在 cap
-    assert j.get("carried") == cap, \
-        "欠账超上限时应恰好顺延 %s 道，实际 %s" % (cap, j.get("carried"))
+    # 上限封的是「接收日总量」：第二天连自己的题带顺延进来的合计 ≤ cap。
+    # 第二天是 submit 时才建的，它「自己的题」= 现在题目数 - 顺延进来的量
+    # （加题可能把它原定的题提前拿到当天，那它自己就是 0 道）
+    s1 = get("/api/state")
+    nxt0 = [b for b in s1["board"]
+            if not b.get("extra") and b["dayIndex"] == s0["board"][cur]["dayIndex"] + 1][0]
+    own = len(nxt0.get("tasks") or []) - j.get("carried")
+    assert len(nxt0.get("tasks") or []) <= cap, \
+        "第二天连自己的题带顺延最多 %s 题，实际 %s" % (cap, len(nxt0.get("tasks") or []))
+    assert j.get("carried") == max(0, cap - own), \
+        "顺延量应 = 接收日余量 %s（上限 %s - 第二天自身 %s），实际 %s" % (
+            max(0, cap - own), cap, own, j.get("carried"))
 
     ids0 = {t["id"] for t in s0["board"][cur]["tasks"]}
-    s1 = get("/api/state")
     nx = [b for b in s1["board"]
           if not b.get("extra") and b["dayIndex"] == s0["board"][cur]["dayIndex"] + 1]
-    print("   当天 %s 题 -> 顺延 %s 道（上限 %s）+ 补做日 %s 道"
-          % (ntasks, j.get("carried"), cap, j.get("extra")))
+    print("   当天 %s 题 -> 顺延 %s 道 + 补做日 %s 道（接收日上限 = 自身 %s + 顺延 ≤ %s）"
+          % (ntasks, j.get("carried"), j.get("extra"), per, cap))
 
     print("\n== 1b. 补做日 ==")
     extras = [b for b in s1["board"] if b.get("extra")]
@@ -114,9 +124,9 @@ try:
                if not b.get("extra") and b["dayIndex"] == cur_di + 1]
     assert nxt_day, "应该存在第二天"
     n = len(nxt_day[0].get("tasks", []))
-    print("   第二天共 %s 题（自身 %s + 顺延上限 %s）" % (n, per, cap))
-    assert n <= per + cap, "第二天不应超过 %s 题，实际 %s" % (per + cap, n)
-    assert n >= cap, "第二天应接到了顺延的 %s 道" % cap
+    print("   第二天共 %s 题（自身 %s + 顺延 %s，上限 %s）"
+          % (n, n - j.get("carried"), j.get("carried"), cap))
+    assert n <= cap, "第二天连自己的题带顺延最多 %s 题，实际 %s" % (cap, n)
 
     print("\n== 2b. 有补做日时再展开，不能跳过计划天 ==")
     before = [(b["dayIndex"], b.get("extra"), len(b.get("tasks", []))) for b in s1["board"]]

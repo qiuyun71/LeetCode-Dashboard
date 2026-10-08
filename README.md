@@ -40,7 +40,7 @@
 
 ### 方式一：Windows 双击（最省事）
 
-下载解压后，双击 **`启动/打开看板.bat`**，浏览器会自动打开。
+下载解压后，双击 **`打开看板.bat`**，浏览器会自动打开。
 
 `打开看板.bat` 会按顺序找 Python：`python` → `python3` → `py -3` →
 `%LOCALAPPDATA%\Programs\Python\Python3xx\` → 项目内 `python\`。
@@ -51,9 +51,9 @@
 ```bash
 git clone <你的仓库地址> && cd leetcode-board
 
-python3 启动/start.py   # 起服务 + 自动开浏览器
+python3 start.py        # 起服务 + 自动开浏览器
 # 或者
-./启动/start.sh         # 同上（macOS / Linux）
+./start.sh              # 同上（macOS / Linux）
 ```
 
 ### 方式三：手动起服务（推荐给开发者）
@@ -65,11 +65,9 @@ python3 server.py       # 只起服务，浏览器访问 http://127.0.0.1:8765
 | 命令 | 作用 |
 |------|------|
 | `python3 server.py` | 只起本地服务（前台，日志打在终端） |
-| `python3 启动/start.py` | 检测端口 → 未运行则静默拉起服务 → 开浏览器 |
+| `python3 start.py` | 检测端口 → 未运行则静默拉起服务 → 开浏览器 |
 | `python3 seed_lc100.py` | 重建 LeetCode 100 题单（**会清空进度**，谨慎） |
-
-> 回归测试脚本在开发副本里（`_x.py`，跑在独立端口的副本数据上，不碰真实 `plan.json`），
-> 日常使用目录不带它。
+| `python3 _x.py` | 跑回归测试（在副本上跑，不碰你的真实数据） |
 
 ### 环境变量（进阶）
 
@@ -90,7 +88,7 @@ LEET_PLAN=_t_plan.json LEET_PORT=8799 python3 server.py
 | 方式 | 命令 | 表现 | 怎么停 |
 |------|------|------|--------|
 | **前台**（调试用） | `python3 server.py` | 终端占着，日志直接打屏 | `Ctrl+C` |
-| **后台 + 开浏览器**（日常推荐） | `python3 启动/start.py` | 立刻返回控制台，不留窗口 | 任务管理器结束 `python` / `pythonw` |
+| **后台 + 开浏览器**（日常推荐） | `python3 start.py` | 立刻返回控制台，不留窗口 | 任务管理器结束 `python` / `pythonw` |
 | **后台无窗口** | `pythonw server.py` | Windows 上完全没有黑框 | 任务管理器 |
 | **后台 + 日志**（mac/Linux） | `nohup python3 server.py > server.log 2>&1 &` | 无窗口，日志落盘 | `pkill -f server.py` |
 
@@ -112,15 +110,14 @@ leetcode-board/
 ├── app.js               # 前端逻辑
 ├── plan.json            # 你的刷题数据（本地文件，不进仓库）
 ├── plan.example.json    # 数据模板（复制成 plan.json 即可用）
+├── start.py             # 启动器（静默拉起服务 + 开浏览器）
+├── start.sh             # macOS / Linux 启动脚本
+├── 打开看板.bat         # Windows 一键启动
 ├── seed_lc100.py        # LeetCode 100 题库（重建用）
-├── assets/              # 背景图（水墨风）
+├── toast.ps1            # Windows 系统通知
+├── _x.py                # 回归测试（副本服务，不碰真实数据）
+├── assets/              # 背景图（AI 生成：默认水墨风 + 备用吉卜力风）
 ├── docs/screenshot.png  # README 配图
-├── 启动/                # 启动方式都放这里
-│   ├── 打开看板.bat     # Windows 一键启动（双击即用）
-│   ├── start.py         # 启动器（静默拉起服务 + 开浏览器）
-│   ├── start.sh         # macOS / Linux 启动脚本
-│   ├── toast.ps1        # Windows 系统通知（被 server.py 调用）
-│   └── server.log       # 启动器拉起服务时的日志（运行时生成）
 ├── LICENSE              # MIT
 ├── .gitignore           # 排除 plan.json 等个人数据
 ├── .gitattributes       # 统一换行符，保证 start.sh 在 mac/Linux 能跑
@@ -174,8 +171,8 @@ cp plan.example.json plan.json     # 手动初始化
 - **换题 / 加题只从本题单里出题**：就是「本题单还没上板的那 N 道」，
   不去全局题池或其它题单借题，题目排完就是真没了
 - **✎ 自定义今天的题**：不想按系统排的顺序做？点题板头部「✎ 自定义」弹出
-  选题面板——本题单**还没做过**的题都能挑（已勾选的题会保留、每天最多
-  N 道），带搜索框；面板里「↺ 恢复系统出题」一键回到当天的原始题目
+  选题面板——本题单**还没做过**的题都能挑（已勾选的题会保留、**不限数量**，
+  想一天做七八道也行），带搜索框；面板里「↺ 恢复系统出题」一键回到当天的原始题目
 - **确定完成**：勾选的记入记录，**没勾的题留在今天**（见下方「欠账机制」）
   - **0 题也能确认翻篇**：今天一道没勾，确认后这天直接结束——没勾的题按欠账
     规则顺延 / 进补做日，日历上这天记为未完成。适合「今天就是没刷，别让题板
@@ -332,7 +329,7 @@ cp plan.example.json plan.json     # 手动初始化
 | `/api/markpre` | POST | `{day,index}` | 标记「之前做过」 |
 | `/api/unmarkpre` | POST | `{id}` | 撤销「之前做过」 |
 | `/api/add` | POST | `{day,n}` | 加 n 题 |
-| `/api/customday` | POST | `{day,ids}` | 自定义当天的题：没勾的换成自选题（已勾选的保留；超每天题数报 `too_many`） |
+| `/api/customday` | POST | `{day,ids}` | 自定义当天的题：没勾的换成自选题（已勾选的保留，不限数量） |
 | `/api/submit` | POST | `{day}` | 提交：勾选记完成，未勾选的留在当天；传 `{day,zero:1}` = 0 题确认翻篇（当天结束，欠账顺延） |
 | `/api/expand` | POST | — | 展开下一天 |
 | `/api/resetday` | POST | `{day}` | 重置该天 |

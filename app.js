@@ -1574,18 +1574,16 @@ async function undo(){
    搜索/列表样式；候选 = 本题单还没做过的题（done / 之前做过都排除），
    打开时当天没勾的题默认选中。提交走 /api/customday：已勾选的题保留。 */
 var CUSEL=[], CUSDAY=0, CUSKW='';
-function cusPer(){return (STATE&&STATE.plan&&STATE.plan.perDay)||4;}
 function openCustom(di){
   if(!STATE)return;
   var day=(STATE.board||[])[di]; if(!day)return;
   CUSDAY=di; CUSKW='';
   CUSEL=day.tasks.filter(function(t){return !t.checked;}).map(function(t){return t.id;});
-  var per=cusPer();
   var ckN=day.tasks.filter(function(t){return t.checked;}).length;
   document.getElementById('mTitle').innerHTML='自定义今天的题<span class="msub">'+
-    esc(STATE.activeName||'')+' · 每天 '+per+' 道</span>';
+    esc(STATE.activeName||'')+'</span>';
   document.getElementById('mBody').innerHTML=
-    '<div class="cusbar">已选 <b id="cusN">'+CUSEL.length+'</b> / '+per+' 道'+
+    '<div class="cusbar">已选 <b id="cusN">'+CUSEL.length+'</b> 道'+
       (ckN?' <span class="cusdim">· 今天已勾选的 '+ckN+' 题会保留':'')+
     '</div>'+
     '<div class="searchbox">'+
@@ -1620,7 +1618,6 @@ function renderCusList(){
   var el=document.getElementById('cusList'); if(!el)return;
   var arr=cusCands();
   var sel={};CUSEL.forEach(function(id){sel[id]=1;});
-  var per=cusPer();
   var nEl=document.getElementById('cusN');
   if(nEl)nEl.textContent=CUSEL.length;
   var ap=document.getElementById('cusApply');
@@ -1632,9 +1629,8 @@ function renderCusList(){
   }
   arr.forEach(function(t){
     var on=!!sel[t.id];
-    var full=!on&&CUSEL.length>=per;
     var d=document.createElement('div');
-    d.className='titem cusitem'+(on?' sel':'')+(full?' dim':'');
+    d.className='titem cusitem'+(on?' sel':'');
     var color=DIFF[t.difficulty]||'#9CA3AF';
     d.innerHTML='<span class="dot" style="background:'+color+'"></span>'+
       '<span class="tid">#'+esc(t.id)+'</span>'+
@@ -1645,7 +1641,6 @@ function renderCusList(){
       if(on){
         CUSEL=CUSEL.filter(function(x){return x!==t.id;});
       }else{
-        if(CUSEL.length>=per){toast('每天最多 '+per+' 道，先取消几道再选');return;}
         CUSEL.push(t.id);
       }
       renderCusList();
@@ -1665,8 +1660,7 @@ function clearCusSearch(){
 async function applyCustom(){
   var j=await post('/api/customday',{day:CUSDAY,ids:CUSEL});
   if(!j.ok){
-    toast(j.err==='too_many'?('每天最多 '+cusPer()+' 道'):
-          (j.err==='nothing'?'一道都没选':'这些题不在可挑范围里'));
+    toast(j.err==='nothing'?'一道都没选':'这些题不在可挑范围里');
     return;
   }
   closeModal();

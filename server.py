@@ -1000,18 +1000,16 @@ def do_custom_day(p, l, di, ids):
     当天**已勾选**的题原样保留（半天提交过的进度不能丢）；换下来的题
     回到本题单候选池（它们没 done，自然回到 rest）。
     只接受本题单的、没做过（done /「之前做过」都算做过）的题；
-    每天总量仍受 perDay 约束（已勾选的也算在内）。
+    **不限数量**（perDay 只是系统出题的默认量，想一天做七八道不拦着）。
     返回 (n, err)：n = 实际换进来的题数。
     """
     board = l.get("board", [])
     if not (0 <= di < len(board)):
         return 0, "bad_index"
-    per = max(1, int(l.get("perDay", 4) or 4))
     b = board[di]
 
     keep = [t for t in b.get("tasks", []) if t.get("checked")]
     keep_ids = {t.get("id") for t in keep}
-    room = max(0, per - len(keep))
 
     probs = {}
     for _cn, t in effective_problems(l):
@@ -1034,8 +1032,6 @@ def do_custom_day(p, l, di, ids):
             return 0, "bad_ids"          # 不是本题单的题 / 已经做过
         picked.append(x)
 
-    if len(picked) > room:
-        return 0, "too_many"             # 当天最多 perDay 道（含已勾选的）
     if not picked:
         return 0, "nothing"              # 一道都没选
 

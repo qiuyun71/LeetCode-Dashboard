@@ -1825,9 +1825,9 @@ def do_setstart(p, key, date):
 
 def send_toast(title, body):
     """弹 Windows 系统通知。返回 (ok, msg)：ok=已提交给系统；msg=失败原因（前端可见）"""
-    ps = os.path.join(BASE, "启动", "toast.ps1")
+    ps = os.path.join(BASE, "start", "toast.ps1")
     if not os.path.isfile(ps):
-        return False, "启动/toast.ps1 不存在"
+        return False, "start/toast.ps1 不存在"
     if os.name != "nt":
         return False, "系统通知仅支持 Windows"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)

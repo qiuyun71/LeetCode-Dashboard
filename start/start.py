@@ -10,7 +10,7 @@ import sys
 import time
 import webbrowser
 
-BASE = os.path.dirname(os.path.abspath(__file__))   # 启动/ 目录
+BASE = os.path.dirname(os.path.abspath(__file__))   # start/ 目录
 ROOT = os.path.dirname(BASE)                        # 项目根（上一级）
 PORT = int(os.environ.get("LEET_PORT") or 8765)   # 与 server.py 保持一致
 URL = "http://127.0.0.1:%d" % PORT

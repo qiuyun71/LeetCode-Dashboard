@@ -3,7 +3,7 @@
 > 一个 **Vibe Coding** 作品 —— 纯 HTML / CSS / JavaScript 前端 + Python 标准库本地服务，
 > **运行时零第三方依赖**，Windows 双击 bat 就能跑。全程由 AI Agent（WorkBuddy）与人协作完成。
 
-![screenshot](docs/screenshot.png)
+![主界面](docs/screenshot.png)
 
 每天打开看一眼：**今天该做哪几道**、做完打勾、没做完的题留在今天，日历记录你的坚持。
 
@@ -21,6 +21,19 @@
 | ⭐ **错题本**        | 标记经典 / 错题 + 备注，统计难度与考点             |
 | 📊 **统计 + 热力日历** | 连续天数、难度分布、单日纪录，悬停看当天做了哪几道          |
 | 🎨 **水墨氛围**      | 竹林背景 + 细雨 + 竹叶飘落，AI 生成插画           |
+
+***
+
+## 📸 主要页面
+
+<p align="center">
+  <img src="docs/shot-settle.png" alt="提交后的结算页" width="49%" />
+  <img src="docs/shot-trophy.png" alt="成就殿堂" width="49%" />
+</p>
+<p align="center">
+  <img src="docs/shot-custom.png" alt="自定义选题" width="49%" />
+  <img src="docs/shot-marks.png" alt="错题本" width="49%" />
+</p>
 
 ***
 

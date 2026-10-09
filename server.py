@@ -1310,7 +1310,7 @@ def auto_settle(l):
 
 
 def settle_msg(info):
-    """把auto_settle 的结果拼成一句人话，给系统通知 / 启动提示用。"""
+    """把auto_settle 的结果拼成一句人话，写进启动日志用。"""
     n = info.get("settled", 0)
     added = info.get("added", 0)
     carried = info.get("carried", 0)
@@ -1856,11 +1856,10 @@ def send_toast(title, body):
 
 
 def settle_worker():
-    """后台巡检：跨天自动结算（20s 一巡，日期驱动，停机重启会补齐）"""
+    """后台巡检：跨天自动结算（20s 一巡，日期驱动，停机重启会补齐）。
+    静默结算：不弹 Windows 通知，安安静静把账结掉。"""
     while True:
         try:
-            today = datetime.date.today().isoformat()
-            note = None
             with _lock:
                 p = ensure_root(load_plan())
                 # 跨天自动结算：把昨天及以前没提交的天自动「确定完成」并切到今天
@@ -1870,11 +1869,8 @@ def settle_worker():
                     info = auto_settle(l0)
                     if info["settled"] or info["expanded"]:
                         save_plan(p)
-                        note = settle_msg(info)
                     else:
                         _history.pop()   # 没动数据就不留撤销点
-            if note:
-                send_toast("看板 · 自动结算", note)   # 锁外弹，不阻塞请求
         except Exception:
             pass
         time.sleep(20)
@@ -2303,24 +2299,21 @@ def ensure_plan_file():
 
 def main():
     ensure_plan_file()
-    settled = None
     with _lock:
         p = ensure_root(load_plan())
         l = get_list(p)
         if l is not None:
             ensure_board(l)
             # 启动即补结算：停机几天后再打开，把欠的天一次性结清、切到今天
+            # （静默结算，不弹通知，只打日志）
             push_history(p)
             info = auto_settle(l)
             if info["settled"] or info["expanded"]:
                 save_plan(p)
-                settled = info
                 print("auto-settle: %s" % settle_msg(info), flush=True)
             else:
                 _history.pop()
         save_plan(p)
-    if settled:
-        send_toast("看板 · 自动结算", settle_msg(settled))
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:

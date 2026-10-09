@@ -1077,7 +1077,6 @@ function dayHTML(day, di, s, isCur){
 
   // 说明不再铺成文字，挂在「确定完成」按钮里的问号上（hover 才看）
   var per=(s.plan&&s.plan.perDay)||4;
-  var ck=0;day.tasks.forEach(function(t){if(t.checked)ck++;});
   // 注意：data-tip 是 HTML 属性，里面只能用单引号，双引号会把属性提前闭合
   var qtip="<div class='tt'>没做完也能直接点「确定完成」</div>"+
     "<div class='tr'>· 没勾的题会<b style='color:#B45309'>留在今天</b>，回去做完再交</div>"+
@@ -1085,7 +1084,7 @@ function dayHTML(day, di, s, isCur){
     "<div class='tr'>· 第二天最多接 "+per*2+" 道（当天上限 = 每天题数×2）</div>"+
     "<div class='tr'>· 超出的挪到计划末尾的补做日（日历<b style='color:#B45309'>琥珀色</b>）</div>";
   var btn='<button class="submit" data-di="'+di+'" '+(fin?'disabled':'')+'>'+
-    (fin?'已完成':(ck===0?'0 题 · 确认翻篇':'确定完成'))+
+    (fin?'已完成':'确定完成')+
     (fin?'':'<span class="swq" data-tip="'+qtip+'">?</span>')+'</button>';
   var tip='';
   // 当前天只留「撤销」。展开下一天交给服务端跨天自动做：

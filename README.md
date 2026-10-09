@@ -26,14 +26,21 @@
 
 ## 📸 主要页面
 
-<p align="center">
-  <img src="docs/shot-settle.png" alt="提交后的结算页" width="49%" />
-  <img src="docs/shot-trophy.png" alt="成就殿堂" width="49%" />
-</p>
-<p align="center">
-  <img src="docs/shot-custom.png" alt="自定义选题" width="49%" />
-  <img src="docs/shot-marks.png" alt="错题本" width="49%" />
-</p>
+**提交后的结算页** —— 做完今天的题点「确定完成」，弹出：当天做了哪几道、难度分布、累计进度。
+
+![](docs/shot-settle.png)
+
+**成就殿堂** —— 19 个成就分 5 类，做到哪个解锁哪个。
+
+![](docs/shot-trophy.png)
+
+**自定义选题** —— 当天想换着做 / 加题 / 指定做哪几道都行。
+
+![](docs/shot-custom.png)
+
+**错题本** —— 标记经典或错题 + 备注，按难度和考点统计。
+
+![](docs/shot-marks.png)
 
 ***
 

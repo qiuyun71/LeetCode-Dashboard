@@ -1,13 +1,13 @@
 # 力扣刷题看板 ✧
 
-> 一个 **Vibe Coding** 作品 —— 纯 HTML / CSS / JavaScript 前端 + Python 标准库本地服务，
+> 一个 **Vibe Coding** 作品 —— 纯 HTML / CSS / JavaScript 前端 + Python 标准库本地服务，  
 > **运行时零第三方依赖**，Windows 双击 bat 就能跑。全程由 AI Agent（WorkBuddy）与人协作完成。
 
 ![主界面](docs/screenshot.png)
 
 每天打开看一眼：**今天该做哪几道**、做完打勾、没做完的题留在今天，日历记录你的坚持。
 
-***
+---
 
 ## ✨ 功能
 
@@ -22,7 +22,7 @@
 | 📊 **统计 + 热力日历** | 连续天数、难度分布、单日纪录，悬停看当天做了哪几道          |
 | 🎨 **水墨氛围**      | 竹林背景 + 细雨 + 竹叶飘落，AI 生成插画           |
 
-***
+---
 
 ## 📸 主要页面
 
@@ -42,16 +42,18 @@
 
 ![](docs/shot-marks.png)
 
-***
+---
 
 ## 🚀 使用
 
-**要求：Python 3.8+**（[官网下载](https://www.python.org/downloads/)，安装时勾选 *Add to PATH*）。
+**要求：Python 3.8+**（[官网下载](https://www.python.org/downloads/)，安装时勾选 *Add to PATH*）。  
 **不需要** `pip install` 任何东西 —— 只用 Python 标准库。
 
 ### Windows：双击（最省事）
 
 下载解压后，双击 **`start/打开看板.bat`**，浏览器会自动打开。
+
+改了 `server.py` 之后，双击 **`start/重启看板.bat`** 重启服务 —— 它会先停掉旧服务再拉起（「打开看板」在服务已经跑着时只会开个浏览器标签页，不会重启）。
 
 - bat 会按顺序找 Python：`python` → `python3` → `py -3` → 标准安装位置（`%LOCALAPPDATA%\Programs\Python\…`）→ 项目内 `python\` 目录
 - 所以装 Python 时没勾 *Add to PATH* 也能跑（只要装在标准位置）
@@ -82,37 +84,27 @@ python3 server.py        # 只起服务，浏览器访问 http://127.0.0.1:8765
 - 首次启动时没有 `plan.json`，服务会**自动生成**一份带 LeetCode 100 的默认题库，打开就能用
 - 想备份进度，复制 `plan.json` 即可；仓库里另有 `plan.example.json` 数据模板
 
-***
+---
 
 ## 📁 结构速览
 
 ```
 server.py / ui.html / app.js   服务与界面（零依赖，改完刷新即生效）
 seed_lc100.py                  LeetCode 100 题库（重建用）
-start/                         打开看板.bat / start.py / start.sh / toast.ps1
+start/                         打开看板.bat / 重启看板.bat / start.py / start.sh / toast.ps1
 assets/ docs/ favicon.svg      背景图 / 截图 / 图标
 plan.example.json              数据模板
 ```
 
-***
+---
 
 ## 🤖 Vibe Coding · 本项目使用的智能体与模型
 
-本项目是一个 **Vibe Coding** 作品：全程由 **WorkBuddy**（AI Agent 工作台）驱动 ——
-需求、功能实现、UI 迭代、Bug 排查均由 Agent 执行并验证，人负责提需求与验收。
-
-| 模型                          |      Token |    占比 |
-| --------------------------- | ---------: | ----: |
-| LongCat-2.5-Preview         |      96.6M | 51.4% |
-| hy4-preview                 |      49.9M | 26.5% |
-| space-bunny                 |      41.1M | 21.8% |
-| deepseek-v4-flash-ga-260731 |     579.6K |  0.3% |
-| **合计**                      | **188.2M** |  100% |
-
-> 统计窗口 2026-10-05 \~ 2026-10-11，费用合计 \$4.69（TokenTracker）。背景插画由 AI
-> 图像生成 API 出图，人工裁掉水印、调色压缩后作为页面背景。
+本项目是一个 **Vibe Coding** 作品：全程由 **WorkBuddy**（AI Agent 工作台）驱动 ——  
+需求、功能实现、UI 迭代、Bug 排查均由 Agent 执行并验证，人负责提需求与验收。  
+先后调用过 LongCat-2.5-Preview、hy4-preview、space-bunny、step-5-preview 等模型，
+具体用量由本机的 TokenTracker 记录。
 
 从零到可用：**零第三方依赖、零构建工具、零部署**，一个 Python 文件就能跑起来。
 
-***
-
+---

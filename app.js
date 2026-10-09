@@ -17,6 +17,9 @@ const ICO_PRE='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" strok
 const ICO_STAR_O='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.8l1-6L3.3 9.6l6-.9z"/></svg>';
 const ICO_STAR='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3.2l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8L6.6 19.8l1-6L3.3 9.6l6-.9z"/></svg>';
 const ICO_STAR_F='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6"><path d="M12 20.7s-7.6-4.6-9.2-9.1c-1-2.8.5-5.7 3.2-6.4 2-.5 4 .3 5 1.7 1-1.4 3-2.2 5-1.7 2.7.7 4.2 3.6 3.2 6.4-1.6 4.5-9.2 9.1-9.2 9.1z"/></svg>';
+/* 爱心 = 错题（ICO_STAR_F 其实是心形，这里补一组名字能对上的） */
+const ICO_HEART='<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 20.7s-7.6-4.6-9.2-9.1c-1-2.8.5-5.7 3.2-6.4 2-.5 4 .3 5 1.7 1-1.4 3-2.2 5-1.7 2.7.7 4.2 3.6 3.2 6.4-1.6 4.5-9.2 9.1-9.2 9.1z"/></svg>';
+const ICO_HEART_O='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.7s-7.6-4.6-9.2-9.1c-1-2.8.5-5.7 3.2-6.4 2-.5 4 .3 5 1.7 1-1.4 3-2.2 5-1.7 2.7.7 4.2 3.6 3.2 6.4-1.6 4.5-9.2 9.1-9.2 9.1z"/></svg>';
 
 /* 背景氛围：细雨（慢但看得见）+ 竹叶慢慢打转 */
 (function(){
@@ -110,33 +113,64 @@ async function post(url,body){
 /* ============ 错题本 / 经典题 ============ */
 var MARK_FILTER='all';
 
+/* ⚠️ 题号一律按字符串比：plan 里的 id 是字符串（"2" / "LCR 001"），
+   而旧 marks_view 会把 id 转成数字，"66"===66 恒 false，
+   于是标记永远匹配不上、按钮死活不亮。别再改回严格相等。 */
 function markOf(pid){
-  var ms=(STATE&&STATE.marks)||[];
-  for(var i=0;i<ms.length;i++){ if(ms[i].id===pid) return ms[i]; }
+  var ms=(STATE&&STATE.marks)||[], k=String(pid);
+  for(var i=0;i<ms.length;i++){ if(String(ms[i].id)===k) return ms[i]; }
   return null;
 }
+/* 一题可能同时是经典+错题，返回 ['wrong','classic'] 这样的数组 */
+function kindsOf(m){
+  if(m&&m.kinds&&m.kinds.length)return m.kinds;
+  return (m&&m.kind)?[m.kind]:[];
+}
+/* 把题号安全嵌进行内 JS 字符串（id 可能是 "LCR 001" 这种带空格的） */
+function jsq(v){return esc(JSON.stringify(String(v)));}
 
 function markLabel(pid){
   var m=markOf(pid);
   return m?m.kindLabel:'';
 }
 
-/* 题板行尾的标记按钮：已标记的显示彩色实心，未标记显示空心 */
-function markBtn(pid){
+/* 题板行尾两个独立标记按钮：★ = 经典 / ♥ = 错题
+   一题可以同时标两类，互不干扰；点已亮的那个 = 取消这一类。
+   标记后图标填色：classic 琥珀金 / wrong 玫红。没有二级菜单。 */
+function markBtns(pid){
   var m=markOf(pid);
-  var cls='icobtn mkbtn'+(m?(m.kind==='wrong'?' on wrong':' on classic'):'');
-  var tip=m?('已标记「'+m.kindLabel+'」· 点击取消'):'标记为经典 / 错题';
-  return '<button class="'+cls+'" data-mark="'+pid+'" data-tip="'+esc(tip)+'">'+
-    (m?(m.kind==='wrong'?ICO_STAR_F:ICO_STAR):ICO_STAR_O)+'</button>';
+  var onC=!!(m&&m.classic), onW=!!(m&&m.wrong);
+  function btn(on,kind,tip,ico){
+    return '<button class="icobtn mkbtn'+(on?(' on '+kind):'')+'" data-mk="'+kind+
+           '" data-mark="'+esc(pid)+'" data-tip="'+tip+'">'+ico+'</button>';
+  }
+  return btn(onC,'classic',
+             onC?'已标为经典 · 再点取消':'标记为经典 · 值得回看的好题',
+             onC?ICO_STAR:ICO_STAR_O)+
+         btn(onW,'wrong',
+             onW?'已标为错题 · 再点取消':'标记为错题 · 做错想再练',
+             onW?ICO_HEART:ICO_HEART_O);
 }
 
-async function toggleMark(pid,kind){
-  var r=await post('/api/mark',{id:pid,kind:kind});
+/* 置一类标记：on=true 标上，on=false 只取消这一类（另一类不受影响） */
+async function toggleMark(pid,kind,on){
+  var r=await post('/api/mark',{id:String(pid),kind:kind,on:!!on});
   if(r&&r.state){
     STATE=r.state;
     load();
     renderPanelBody();
-    toast(kind?('已标记为「'+({classic:'经典',wrong:'错题'})[kind]+'」'):'已取消标记');
+    toast(on?('已标记为「'+({classic:'经典',wrong:'错题'})[kind]+'」')
+            :'已取消「'+({classic:'经典',wrong:'错题'})[kind]+'」标记');
+  }
+}
+/* 两类标记全取消（错题本列表里的 × 按钮用） */
+async function clearMark(pid){
+  var r=await post('/api/mark',{id:String(pid),clear:true});
+  if(r&&r.state){
+    STATE=r.state;
+    load();
+    renderPanelBody();
+    toast('已取消该题的全部标记');
   }
 }
 
@@ -146,8 +180,8 @@ function renderMarks(s){
     return '<div class="emptyhint" style="padding:26px 4px">'+
       '<div style="font-size:15px;font-weight:800;margin-bottom:8px">错题本还是空的</div>'+
       '<div style="font-size:12.5px;line-height:1.9;color:var(--ink-2)">'+
-      '在题板上点每道题行尾的 <b>☆</b> 按钮，就能标记成<br>'+
-      '<b>经典</b>（值得回看的好题）或 <b>错题</b>（做错、想再练的）。<br>'+
+      '在题板上点每道题行尾的 <b>★</b>（经典）或 <b>♥</b>（错题）按钮就能标记；<br>'+
+      '一题可以同时标经典又标错题，点已亮的那个就是取消。<br>'+
       '标记过的题会汇总到这里，并统计难度与考点分布。</div></div>';
   }
   var h='';
@@ -179,26 +213,30 @@ function renderMarks(s){
      '</div>';
 
   var list=ms.filter(function(m){
-    return MARK_FILTER==='all'||m.kind===MARK_FILTER;});
+    if(MARK_FILTER==='all')return true;
+    return kindsOf(m).indexOf(MARK_FILTER)>=0;});
   if(!list.length){
     h+='<div class="fhelp" style="padding:18px 0">这个分类下还没有题。</div>';
     return h;
   }
   h+='<div class="mklist">'+list.map(function(m){
     var dcls=m.difficulty==='hard'?'d hard':(m.difficulty==='medium'?'d med':'d easy');
-    return '<div class="mkitem" data-id="'+m.id+'">'+
-      '<span class="mkkind '+(m.kind==='wrong'?'w':'c')+'">'+
-        (m.kind==='wrong'?'错题':'经典')+'</span>'+
+    /* 一类一个徽标：同时是经典 + 错题就并排两个 */
+    var badges=kindsOf(m).map(function(k){
+      return '<span class="mkkind '+(k==='wrong'?'w':'c')+'">'+
+        (k==='wrong'?'错题':'经典')+'</span>';}).join('');
+    return '<div class="mkitem" data-id="'+esc(m.id)+'">'+
+      badges+
       '<div class="mkmain">'+
-        '<div class="mktitle"><b>#'+m.id+'</b> '+esc(m.name)+
+        '<div class="mktitle"><b>#'+esc(m.id)+'</b> '+esc(m.name)+
           '<span class="'+dcls+'">'+({easy:'简单',medium:'中等',hard:'困难'})[m.difficulty]+'</span>'+
           (m.category?'<span class="mkcat">'+esc(m.category)+'</span>':'')+
           (m.done?'<span class="mkok">已做出来</span>':'')+
         '</div>'+
         '<input class="mknote" placeholder="加一句备注：卡在哪、下次注意什么" value="'+esc(m.note||'')+'" '+
-          'onchange="saveMarkNote('+m.id+',this.value)">'+
+          'onchange="saveMarkNote('+jsq(m.id)+',this.value)">'+
       '</div>'+
-      '<button class="mkdel" data-tip="取消标记" onclick="toggleMark('+m.id+',\'\')">×</button>'+
+      '<button class="mkdel" data-tip="取消标记" onclick="clearMark('+jsq(m.id)+')">×</button>'+
     '</div>';}).join('')+'</div>';
   return h;
 }
@@ -208,31 +246,16 @@ function mkFilter(k){
   renderPanelBody();
 }
 
-/* 题板上点☆：弹一个小选择（经典 / 错题 / 取消） */
-var MKPICK=null;
-function askMark(pid){
-  var m=markOf(pid);
-  var cur=m?m.kind:'';
-  var tip=document.getElementById('mkpickTip');
-  if(tip)tip.textContent='题目 #'+pid;
-  var box=document.getElementById('mkpick');
-  if(box){
-    box.dataset.id=pid;
-    box.querySelectorAll('[data-kind]').forEach(function(b){
-      b.classList.toggle('on',b.dataset.kind===cur);});
-    box.querySelector('[data-kind=""]').style.display=cur?'':'none';
-  }
-  var m2=document.getElementById('mkpickMask');
-  if(m2)m2.classList.add('show');
-}
-function closeMarkPick(){
-  var m=document.getElementById('mkpickMask');
-  if(m)m.classList.remove('show');
+/* 点 ★ / ♥：直接把这一类置成目标状态，不再弹二级菜单。
+   未标记 → 标上；已亮 → 取消这一类；另一类标记原样保留。 */
+async function clickMark(pid,kind){
+  var m=markOf(pid), cur=!!(m&&m[kind]);
+  await toggleMark(pid,kind,!cur);
 }
 
 async function saveMarkNote(pid,val){
   var m=markOf(pid); if(!m)return;
-  var r=await post('/api/mark',{id:pid,kind:m.kind,note:val});
+  var r=await post('/api/mark',{id:String(pid),note:val});
   if(r&&r.state)STATE=r.state;
   toast('备注已保存');
 }
@@ -510,7 +533,12 @@ function calFlash(){
 function renderStats(s){
   var doneN=s.doneCount, tgt=s.target;
   document.getElementById('sDone').textContent=doneN;
-  document.getElementById('sLeft').textContent=Math.max(0,tgt-doneN);
+  /* 剩余题数 = 计划总量 - 计划内已完成（「之前做过」的不算在计划里，要减掉）。
+     ⚠️ 不能写 tgt-doneN：doneN 含「之前做过」的题，而那些题已经不算进 tgt 了
+        （effective_problems 会排除 pre），两边各扣一次 ——
+        点一次「之前做过」剩余就掉 2（实测 lc100 / 前端 / 剑指-offer 三个题单都是 -2）。 */
+  var leftN=Math.max(0,tgt-(doneN-(s.preCount||0)));
+  document.getElementById('sLeft').textContent=leftN;
   var mk=document.getElementById('navMk');
   if(mk){
     var st=s.markStats||{};
@@ -1059,7 +1087,7 @@ function dayHTML(day, di, s, isCur){
       '<span class="pill" style="background:'+grad+'">'+label+'</span>'+
       '<button class="icobtn swap" data-di="'+di+'" data-ti="'+ti+'" data-tip="换一道题（不影响统计）">'+ICO_SWAP+'</button>'+
       '<button class="icobtn mark" data-di="'+di+'" data-ti="'+ti+'" data-tip="之前做过<br>计入已完成，不计入每日量">'+ICO_PRE+'</button>'+
-      markBtn(t.id)+'</div>';
+      markBtns(t.id)+'</div>';
   });
 
   if(fin){
@@ -1111,7 +1139,7 @@ function bindDay(box){
     el.onclick=function(e){e.stopPropagation();markPre(+el.dataset.di,+el.dataset.ti);};
   });
   box.querySelectorAll('.mkbtn').forEach(function(el){
-    el.onclick=function(e){e.stopPropagation();askMark(+el.dataset.mark);};
+    el.onclick=function(e){e.stopPropagation();clickMark(el.dataset.mark,el.dataset.mk);};
   });
   box.querySelectorAll('.addone:not(.reset)').forEach(function(el){
     el.onclick=function(e){e.stopPropagation();addOne(+el.dataset.di);};

@@ -222,46 +222,80 @@ def all_problems_count(l):
 MARK_KINDS = {"classic": "经典", "wrong": "错题"}
 
 
+def _pid_key(pid):
+    """题号统一按字符串处理
+
+    plan.json 里所有 id 都是字符串（"1" / "LCR 001"），board 任务、done 记录
+    同理。历史上 marks_view 把 key int() 过，于是字符串 id 永远匹配不上 marks
+    （"66" !== 66），标记按钮因此死活不亮；剑指那种 "LCR 001" 更是 int() 失败
+    被整条跳过。所有 id 相关比较都走这里，别再混用 int / str。
+    """
+    if pid is None:
+        return None
+    s = str(pid).strip()
+    return s or None
+
+
+def _norm_mark(m):
+    """归一一条 marks 记录 -> {"classic":bool,"wrong":bool,"at","note"}
+
+    兼容旧格式 {"kind":"wrong"}：以前一题只能有一种标记，现在可以同时是
+    经典和错题，所以拆成两个布尔位。
+    """
+    if not isinstance(m, dict):
+        return None
+    c = bool(m.get("classic"))
+    w = bool(m.get("wrong"))
+    if not (c or w) and m.get("kind") in MARK_KINDS:
+        if m["kind"] == "classic":
+            c = True
+        else:
+            w = True
+    return {"classic": c, "wrong": w,
+            "at": m.get("at") or "", "note": m.get("note") or ""}
+
+
 def marks_view(l):
-    """错题本视图：带题号、题目名、难度、分类、标记日期与备注"""
+    """错题本视图：一题一条，classic / wrong 可同时为真"""
     idmap = {}
     for cn, t in flat_problems(l):
         x = dict(t)
         x["category"] = cn                # 分类名只在展平时带着，这里补回题目体
-        idmap[t.get("id")] = x
+        idmap[_pid_key(t.get("id"))] = x
     for t in l.get("pool", []):
         x = dict(t)
         x.setdefault("category", "")
-        idmap.setdefault(t.get("id"), x)
+        idmap.setdefault(_pid_key(t.get("id")), x)
 
-    done_ids = {d.get("id") for d in done_list(l)}
+    done_ids = {str(d.get("id")) for d in done_list(l)}
     out = []
     for pid, m in (l.get("marks") or {}).items():
-        try:
-            pid_i = int(pid)
-        except Exception:
-            continue
-        if not isinstance(m, dict):
-            continue
-        kind = m.get("kind")
-        if kind not in MARK_KINDS:
+        key = _pid_key(pid)
+        nm = _norm_mark(m)
+        if key is None or nm is None:
             continue                      # 脏数据直接跳过
-        t = idmap.get(pid_i) or {}
+        if not (nm["classic"] or nm["wrong"]):
+            continue                      # 两类都空的空壳条目
+        t = idmap.get(key) or {}
+        kinds = [k for k in ("wrong", "classic") if nm[k]]   # 错题排前
         out.append({
-            "id": pid_i,
-            "name": t.get("name") or ("题 %s" % pid_i),
+            "id": key,
+            "name": t.get("name") or ("题 %s" % key),
             "difficulty": t.get("difficulty") or "easy",
             "category": t.get("category") or "",
             "hint": t.get("hint") or "",
-            "kind": kind,
-            "kindLabel": MARK_KINDS[kind],
-            "at": m.get("at") or "",
-            "note": m.get("note") or "",
-            "done": pid_i in done_ids,      # 有没有做出来过
+            "classic": nm["classic"],
+            "wrong": nm["wrong"],
+            "kinds": kinds,
+            "kind": kinds[0],             # 兼容旧字段：主类型
+            "kindLabel": MARK_KINDS[kinds[0]],
+            "at": nm["at"],
+            "note": nm["note"],
+            "done": key in done_ids,      # 有没有做出来过
         })
     # 错题在前、其次经典；同组按标记日期倒序
     order = {"wrong": 0, "classic": 1}
-    out.sort(key=lambda x: (order.get(x["kind"], 9), x["at"] or ""), reverse=False)
+    out.sort(key=lambda x: x["at"] or "", reverse=True)
     out.sort(key=lambda x: order.get(x["kind"], 9))
     return out
 
@@ -280,35 +314,53 @@ def marks_stats(items):
         if m.get("done"):
             done_n += 1
     top = sorted(by_cat.items(), key=lambda kv: -kv[1])[:8]
+    # 一题一条：total 是题数（不是标记数），classic / wrong 各自数（可重叠）
     return {
         "total": len(items),
-        "classic": sum(1 for m in items if m["kind"] == "classic"),
-        "wrong": sum(1 for m in items if m["kind"] == "wrong"),
+        "classic": sum(1 for m in items if m.get("classic")),
+        "wrong": sum(1 for m in items if m.get("wrong")),
         "solved": done_n,
         "byDiff": by_diff,
         "topCat": [{"name": k, "n": v} for k, v in top],
     }
 
 
-def do_mark(l, pid, kind=None, note=None):
-    """标记 / 取消标记。kind 为空或非法表示取消。返回 (ok, err)"""
-    try:
-        pid = int(pid)
-    except Exception:
+def do_mark(l, pid, kind=None, note=None, on=None, clear=False):
+    """标记 / 取消标记。一题可以同时是「经典」又是「错题」，两类互不干扰。
+
+    kind  = "classic" | "wrong"   置这一类标记（on=False 表示只关掉这一类）
+    note  = 字符串                只改备注，不动标记
+    clear = True                  两类标记全取消（错题本列表里的 × 按钮）
+
+    marks 结构（按题号一条，id 是字符串）：
+      {"classic": true, "wrong": false, "at": "2026-10-09", "note": ""}
+    两类都为假时把这一条删掉，不留空壳。
+    """
+    key = _pid_key(pid)
+    if key is None:
         return False, "bad_id"
     marks = l.setdefault("marks", {})
-    key = str(pid)
-    if not kind:
+    if clear:
         marks.pop(key, None)
+        return True, None
+    if note is not None:
+        cur = _norm_mark(marks.get(key))
+        if cur is not None and (cur["classic"] or cur["wrong"]):
+            cur["note"] = str(note)[:200]
+            cur.setdefault("at", datetime.date.today().isoformat())
+            marks[key] = cur
         return True, None
     if kind not in MARK_KINDS:
         return False, "bad_kind"
-    cur = marks.get(key) or {}
-    if note is not None:
-        cur["note"] = str(note)[:200]
-    cur["kind"] = kind
-    cur.setdefault("at", datetime.date.today().isoformat())
-    cur["at"] = cur["at"] or datetime.date.today().isoformat()
+    cur = _norm_mark(marks.get(key)) or {"classic": False, "wrong": False,
+                                         "at": "", "note": ""}
+    val = True if on is None else bool(on)
+    cur[kind] = val
+    if not (cur["classic"] or cur["wrong"]):
+        marks.pop(key, None)             # 两类都没了，条目直接删掉
+        return True, None
+    if val and not cur["at"]:
+        cur["at"] = datetime.date.today().isoformat()
     marks[key] = cur
     return True, None
 
@@ -714,7 +766,12 @@ def stats_view(l):
 
     avg = sum(x["count"] for x in days7) / 7.0   # 名副其实的「近 7 天日均」
     total = total_problems(l)
-    left = max(0, total - len(done_list(l)))
+    # 剩余 = 计划总量 - 计划内已完成的题。
+    # 注意不能写 total - len(done_list(l))：done 里含「之前做过」的题，而那些题
+    # 已经不算进 total（effective_problems 会排除 pre），两边各扣一次，
+    # 于是点一次「之前做过」剩余就掉 2 —— 实测三个题单都是这样。
+    _dl = done_list(l)
+    left = max(0, total - (len(_dl) - sum(1 for d in _dl if d.get("pre"))))
     eta = None
     if avg > 0 and left > 0:
         eta = (today + datetime.timedelta(days=int(-(-left // avg)))).isoformat()
@@ -2207,11 +2264,14 @@ class Handler(BaseHTTPRequestHandler):
                 save_plan(p)
                 self._json({"ok": ok, "err": err, "state": state_view(p)})
             elif path.startswith("/api/mark"):
-                # 标记经典 / 错题；kind 传空字符串表示取消标记
+                # 标记经典 / 错题：{id, kind:"classic"|"wrong", on:true|false}
+                # {id, note:"..."} 只改备注；{id, clear:true} 两类标记全取消
                 note = data.get("note")
                 ok, err = do_mark(l, data.get("id"),
                                   data.get("kind") or None,
-                                  note if note is not None else None)
+                                  note if note is not None else None,
+                                  data.get("on"),
+                                  bool(data.get("clear")))
                 if not ok:
                     _history.pop()
                 save_plan(p)

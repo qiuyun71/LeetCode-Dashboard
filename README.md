@@ -1,7 +1,7 @@
 # 力扣刷题看板 ✧
 
-> 一个 **Vibe Coding** 作品 —— 纯 HTML / CSS / JavaScript 前端 + Python 标准库本地服务，  
-> **运行时零第三方依赖**，Windows 双击 bat 就能跑。全程由 AI Agent（WorkBuddy）与人协作完成。
+> 纯 HTML / CSS / JavaScript 前端 + Python 标准库本地服务，  
+> **运行时零第三方依赖**，Windows 双击 bat 就能跑。
 
 ![主界面](docs/screenshot.png)
 
@@ -97,14 +97,5 @@ plan.example.json              数据模板
 ```
 
 ---
-
-## 🤖 Vibe Coding · 本项目使用的智能体与模型
-
-本项目是一个 **Vibe Coding** 作品：全程由 **WorkBuddy**（AI Agent 工作台）驱动 ——  
-需求、功能实现、UI 迭代、Bug 排查均由 Agent 执行并验证，人负责提需求与验收。  
-先后调用过 LongCat-2.5-Preview、hy4-preview、space-bunny、step-5-preview 等模型，
-具体用量由本机的 TokenTracker 记录。
-
-从零到可用：**零第三方依赖、零构建工具、零部署**，一个 Python 文件就能跑起来。
 
 ---
